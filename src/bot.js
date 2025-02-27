@@ -60,6 +60,11 @@ async function logUsage() {
       🏗️ RAM: ${(stats.memory / 1024 / 1024).toFixed(2)} MB`);
   }, 60000); 
 }
+async function activityUpdate() {
+  setInterval(async () => {
+    setActivity
+  }, 60000); 
+}
 
 client.handleEvents();
 client.once('ready', async () => {
@@ -68,8 +73,8 @@ client.once('ready', async () => {
 client.login(token);
 
 logUsage();
+activityUpdate();
 setInterval(monitorUsage, 3000);
-setInterval(setActivity, 60000)
 // (async () => {
 //   await connect(databaseToken).catch(console.error);
 // })();

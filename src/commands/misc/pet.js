@@ -44,7 +44,7 @@ module.exports = {
                 }
             }
 
-            const newStatus = `with ${userName} 🐾`;
+            const newStatus = `${userName} petted Eppy🐾`;
 
             interaction.client.user.setPresence({
                 activities: [{ name: newStatus }],
