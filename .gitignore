@@ -1,0 +1,12 @@
+src/functions/handlers/queueConfig.json
+node_modules/
+cookies.txt
+Done.txt
+/music/
+data/
+logs/
+.env
+
+
+
+!src/commands/music/
