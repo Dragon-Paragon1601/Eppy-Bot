@@ -1,10 +1,9 @@
-require("dotenv").config();
-const { client_ID } = process.env;
-const { REST } = require("@discordjs/rest");
 const { Routes } = require("discord-api-types/v9");
+const { REST } = require("@discordjs/rest");
 const logger = require("./../../logger");
-const fs = require("fs");
+const { client_ID } = process.env;
 const path = require('path');
+const fs = require("fs");
 
 module.exports = (client) => {
   client.handleCommands = async () => {
@@ -26,10 +25,12 @@ module.exports = (client) => {
         try {
           delete require.cache[require.resolve(commandPath)];
           const command = require(commandPath);
+          // Sprawdź czy komenda ma poprawną strukturę
           if (!command.data || !command.data.name) {
             logger.error(`❌ Błąd: Komenda ${file} nie posiada poprawnej struktury.`);
             continue;
           }
+          // Sprawdź czy komenda jest duplikatem
           if (commandArray.some(cmd => cmd.name === command.data.name)) {
             logger.error(`⚠️ Duplikat komendy: ${command.data.name} - pomijam...`);
             continue;
@@ -45,7 +46,6 @@ module.exports = (client) => {
   
     logger.info(`📜 Rejestrowane komendy: ${client.commandArray.map(cmd => cmd.name).join(", ")}`);
 
-  
     const clientId = client_ID || "880185153081704528";
     const rest = new REST({ version: "9" }).setToken(process.env.token);
     try {

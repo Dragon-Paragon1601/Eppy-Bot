@@ -1,17 +1,18 @@
-const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus } = require("@discordjs/voice");
-const fs = require("fs");
 const path = require("path");
-const mm = require('music-metadata');
+const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus } = require("@discordjs/voice");
+const configPath = path.join(__dirname, "./queueConfig.json");
 const { clearAudioFolders } = require("./handleClearAudio");
 const logger = require("./../../logger");
-const configPath = path.join(__dirname, "./queueConfig.json");
+const mm = require('music-metadata');
+const fs = require("fs");
 const firstSongStartedMap = new Map();
-let idleTimers = {};
-let queues = {};
-let players = {};
 let connections = {};
+let idleTimers = {};
 let isPlaying = {};
+let players = {};
+let queues = {};
 
+// Sprawdź czy pierwsza piosenka została rozpoczęta
 function checkFirstSongStarted(guildId) {
     if (!firstSongStartedMap.has(guildId)) {
         firstSongStartedMap.set(guildId, false); 
@@ -19,6 +20,7 @@ function checkFirstSongStarted(guildId) {
     return firstSongStartedMap.get(guildId);
 } 
 
+// Pobierz kolejkę dla danej gildii
 function getQueue(guildId) {
     const queuePath = path.join(__dirname, `../../../music/queue/queue_${guildId}.json`);
     if (!fs.existsSync(queuePath)) {
@@ -34,6 +36,7 @@ function getQueue(guildId) {
     }
 }
 
+// Zapisz kolejkę dla danej gildii
 function saveQueue(guildId, queue) {
     const queueDir = path.join(__dirname, "../../../music/queue");
     const queuePath = path.join(queueDir, `queue_${guildId}.json`);
@@ -49,17 +52,20 @@ function saveQueue(guildId, queue) {
     }
 }
 
+// Dodaj piosenkę do kolejki
 function addToQueue(guildId, songPath) {
     if (!queues[guildId]) queues[guildId] = [];
     queues[guildId].push(songPath);
     saveQueue(guildId, queues[guildId]);
 }
 
+// Wyczyść kolejkę dla danej gildii
 function clearQueue(guildId) {
     queues[guildId] = [];
     saveQueue(guildId, []);
 }
 
+// Przetasuj kolejkę dla danej gildii
 function shuffleQueue(guildId, shuffleTimes = 10) {
     let queue = getQueue(guildId);
     if (!queue || queue.length < 3) return;
@@ -74,15 +80,18 @@ function shuffleQueue(guildId, shuffleTimes = 10) {
     saveQueue(guildId, queue);
 }
 
+// Sprawdź czy muzyka jest odtwarzana
 function isPlay(guildId) {
     return !!isPlaying[guildId];
 }
 
+// Zatrzymaj odtwarzanie muzyki
 function playersStop(guildId) {
     const emptyResource = createAudioResource(Buffer.alloc(0)); 
     players[guildId].play(emptyResource);
 }
 
+// Sprawdź czy kolejka jest pusta
 function queueEmpty(guildId, interaction) {
     let emptyCheck = getQueue(guildId); 
     if (emptyCheck.length === 0) {
@@ -104,12 +113,14 @@ function queueEmpty(guildId, interaction) {
     }
 }
 
+// Sformatuj czas w milisekundach na minuty i sekundy
 function formatTime(ms) {
     const minutes = Math.floor(ms / 60000);
     const seconds = Math.floor((ms % 60000) / 1000);
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
+// Utwórz pasek postępu dla odtwarzanej piosenki
 function createProgressBar(currentTime, totalTime, barLength = 23) {
     if (isNaN(currentTime) || isNaN(totalTime) || totalTime === 0) return "[─────────────────]";
     let progress = Math.round((currentTime / totalTime) * barLength);
@@ -117,6 +128,7 @@ function createProgressBar(currentTime, totalTime, barLength = 23) {
     return "█".repeat(progress) + "─".repeat(barLength - progress);
 }
 
+// Pobierz długość piosenki
 async function getSongDuration(songPath) {
     try {
         const metadata = await mm.parseFile(songPath);
@@ -127,6 +139,7 @@ async function getSongDuration(songPath) {
     }
 }
 
+// Odtwórz następną piosenkę w kolejce
 async function playNext(guildId, interaction) {
     if (isPlaying[guildId]) {
         return;
@@ -212,12 +225,14 @@ async function playNext(guildId, interaction) {
     if (idleTimers[guildId]) clearTimeout(idleTimers[guildId]);
 }
 
+// Pobierz kanał kolejki dla danej gildii
 function getQueueChannel(guildId) {
     if (!fs.existsSync(configPath)) return null;
     const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
     return config[guildId] || null;
 }
 
+// Wczytaj konfigurację
 function loadConfig() {
     if (!fs.existsSync(configPath)) {
         fs.writeFileSync(configPath, JSON.stringify({}), "utf-8");
@@ -225,10 +240,12 @@ function loadConfig() {
     return JSON.parse(fs.readFileSync(configPath, "utf-8"));
 }
 
+// Zapisz konfigurację
 function saveConfig(config) {
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
 }
 
+// Rozpocznij odtwarzanie muzyki
 function startPlaying(interaction) {
     const guildId = interaction.guild.id;
     if (!players[guildId] || players[guildId].state.status !== AudioPlayerStatus.Playing) {

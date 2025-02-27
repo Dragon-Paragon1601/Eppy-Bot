@@ -17,6 +17,7 @@ async function setActivity() {
         smallImageText: "Verified",
         instance: false,
     });
+    logger.debug("Activity reset to default.");
 }
 
 rpc.on("ready", () => {

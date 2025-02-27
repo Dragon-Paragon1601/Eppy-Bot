@@ -42,7 +42,7 @@ function addCurrency(guildId, userId, amount) {
     saveRouletteData();
 }
 
-// Sprawdź, czy użytkownik ma życie
+// Sprawdź czy użytkownik ma życie
 function hasLives(guildId, userId) {
     initUserData(guildId, userId);
     return rouletteData[guildId][userId].lives > 0;

@@ -1,34 +1,71 @@
-const { Client } = require('discord.js');
-const logger = require("./../../logger");
+const fs = require('fs');
+const path = require('path');
 
-/**
- * @param {Client} client - Instancja klienta Discord.
- * @param {string} status - Status bota (online, idle, dnd, invisible).
- * @param {number} activityType - Typ aktywności (0 - Playing, 1 - Streaming, 2 - Listening, 3 - Watching, 5 - Competing).
- * @param {string} activityName - Nazwa aktywności (opis, np. "Minecraft").
- * @param {string} [streamURL] - URL streama (opcjonalnie, wymagane dla STREAMING).
- */
-function setBotPresence(client, status, activityType, activityName, stateName, streamURL = '') {
-    if (![0, 1, 2, 3, 5].includes(activityType)) {
-        logger.error(`❌ Błąd: Nieprawidłowy typ aktywności: ${activityType}`);
-        return;
+const petDataPath = path.join(__dirname, '../../../data/petData.json');
+
+let petData = {};
+
+// Wczytaj dane z pliku JSON
+function loadPetData() {
+    if (fs.existsSync(petDataPath)) {
+        const rawData = fs.readFileSync(petDataPath);
+        petData = JSON.parse(rawData);
     }
-
-    try {
-        client.user.setPresence({
-            status: status, 
-            activities: [{
-                name: activityName,
-                type: activityType,
-                state: stateName,
-                url: activityType === 1 ? streamURL : null,
-            }],
-        });
-
-        logger.info(`✅ Status bota zmieniony: ${status} | Typ: ${activityType} | Opis: ${activityName}`);
-    } catch (error) {
-        logger.error(`❌ Błąd w setBotPresence: ${error}`);
+    if (!petData.cooldowns) {
+        petData.cooldowns = {};
     }
 }
 
-module.exports = { setBotPresence };
+// Zapisz dane do pliku JSON
+function savePetData() {
+    fs.writeFileSync(petDataPath, JSON.stringify(petData, null, 2));
+}
+
+// Dodaj petted dla użytkownika na serwerze
+function addPet(guildId, userId) {
+    if (!petData[guildId]) {
+        petData[guildId] = {};
+    }
+    if (!petData[guildId][userId]) {
+        petData[guildId][userId] = 0;
+    }
+    petData[guildId][userId] += 1;
+    savePetData();
+}
+
+// Pobierz liczbę petted dla użytkownika na serwerze
+function getPetCount(guildId, userId) {
+    return petData[guildId]?.[userId] || 0;
+}
+
+// Ustaw cooldown dla użytkownika
+function setCooldown(userId) {
+    petData.cooldowns[userId] = Date.now() + 3600000; 
+    savePetData();
+}
+
+// Sprawdź czy użytkownik jest na cooldownie
+function isOnCooldown(userId) {
+    const cooldown = petData.cooldowns?.[userId];
+    if (!cooldown) return false;
+    const remainingTime = cooldown - Date.now();
+    if (remainingTime > 0) {
+        return remainingTime;
+    } else {
+        delete petData.cooldowns[userId];
+        savePetData();
+        return false;
+    }
+}
+
+// Pobierz top petted na serwerze
+function getTopPetters(guildId) {
+    const guildPetData = petData[guildId] || {};
+    return Object.entries(guildPetData)
+        .sort(([, a], [, b]) => b - a)
+        .map(([userId, count]) => ({ userId, count }));
+}
+
+loadPetData();
+
+module.exports = { addPet, getPetCount, setCooldown, isOnCooldown, getTopPetters };

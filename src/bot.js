@@ -6,6 +6,7 @@ const logger = require("./logger");
 const config = require("./config");
 const pidusage = require("pidusage");
 const { connect } = require("mongoose");
+const { setActivity } = require("./functions/tools/rpc");
 const { Client, Collection, GatewayIntentBits,  } = require("discord.js");
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
 const token = config.token;
@@ -67,8 +68,8 @@ client.once('ready', async () => {
 client.login(token);
 
 logUsage();
-setInterval(monitorUsage, 2500);
-
+setInterval(monitorUsage, 3000);
+setInterval(setActivity, 60000)
 // (async () => {
 //   await connect(databaseToken).catch(console.error);
 // })();

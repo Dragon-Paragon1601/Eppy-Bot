@@ -19,6 +19,7 @@ const spotifyApi = new SpotifyWebApi({
     clientSecret: config.spotify_secret
 });
 
+// Pobierz utwory z Spotify
 async function getSpotifyTracks(url) {
     await spotifyApi.clientCredentialsGrant().then(data => {
         spotifyApi.setAccessToken(data.body.access_token);
@@ -59,97 +60,98 @@ module.exports = {
                 .setRequired(true)
         ),
 
-        async execute(interaction) {
-            const find = interaction.options.getString("find");
-            const guildId = interaction.guild.id;
-            const member = interaction.member;
-            const voiceChannel = member.voice.channel;
-        
-            if (!voiceChannel) {
-                return interaction.reply({
-                    content: "❌ You need to be in a voice channel to play music!",
-                    ephemeral: true
-                });
+    async execute(interaction) {
+        const find = interaction.options.getString("find");
+        const guildId = interaction.guild.id;
+        const member = interaction.member;
+        const voiceChannel = member.voice.channel;
+    
+        if (!voiceChannel) {
+            return interaction.reply({
+                content: "❌ You need to be in a voice channel to play music!",
+                ephemeral: true
+            });
+        }
+    
+        await interaction.deferReply();
+        const audioDir = path.join(__dirname, `../../../music/audio/${guildId}`);
+    
+        let firstSongStarted = firstSongStartedMap.get(guildId) || false;
+    
+        try {
+            if (!fs.existsSync(audioDir)) {
+                fs.mkdirSync(audioDir, { recursive: true });
+                logger.debug("📁 Utworzono folder audio.");
             }
-        
-            await interaction.deferReply();
-            const audioDir = path.join(__dirname, `../../../music/audio/${guildId}`);
-        
-            let firstSongStarted = firstSongStartedMap.get(guildId) || false;
-        
-            try {
-                if (!fs.existsSync(audioDir)) {
-                    fs.mkdirSync(audioDir, { recursive: true });
-                    logger.debug("📁 Utworzono folder audio.");
-                }
-        
-                if (find.includes("spotify.com")) {
-                    const searchTerms = await getSpotifyTracks(find);
-                    for (const term of searchTerms) {
-                        await downloadAndQueue(term, interaction, voiceChannel, firstSongStarted);
-                        if (!firstSongStarted) {
-                            firstSongStarted = true;
-                            firstSongStartedMap.set(guildId, true);  
-                        }
-                    }
-                } else if (find.includes("list=")) {
-                    exec(`yt-dlp --flat-playlist --print-json "${find}"`, async (error, stdout) => {
-                        if (error) {
-                            interaction.editReply({
-                                content: "❌ Error fetching playlist info.",
-                                ephemeral: true
-                            });
-                            return;
-                        }
-        
-                        const videoUrls = stdout.split("\n").map(line => {
-                            try {
-                                return JSON.parse(line).url;
-                            } catch {
-                                return null;
-                            }
-                        }).filter(url => url);
-        
-                        if (videoUrls.length === 0) {
-                            interaction.editReply({
-                                content: "🚫 No playable videos found in the playlist.",
-                                ephemeral: true
-                            });
-                            return;
-                        }
-        
-                        interaction.editReply(`🎵 Found ${videoUrls.length} songs. Downloading one by one...`);
-        
-                        for (const videoUrl of videoUrls) {
-                            try {
-                                const success = await downloadAndQueue(videoUrl, interaction, voiceChannel, firstSongStarted);
-                                if (!firstSongStarted && success) {
-                                    firstSongStarted = true;
-                                    firstSongStartedMap.set(guildId, true);  
-                                }
-                            } catch (err) {
-                                logger.error(`❌ Błąd pobierania: ${videoUrl}`);
-                            }
-                        }
-        
-                        interaction.channel.send("🎶 Every song added to queue!");
-                    });
-                } else {
-                    await downloadAndQueue(find, interaction, voiceChannel, firstSongStarted);
+    
+            if (find.includes("spotify.com")) {
+                const searchTerms = await getSpotifyTracks(find);
+                for (const term of searchTerms) {
+                    await downloadAndQueue(term, interaction, voiceChannel, firstSongStarted);
                     if (!firstSongStarted) {
                         firstSongStarted = true;
-                        firstSongStartedMap.set(guildId, true); 
+                        firstSongStartedMap.set(guildId, true);  
                     }
                 }
-            } catch (error) {
-                interaction.editReply({
-                    content: `❌ Error occurred: ${error.message}`,
-                    ephemeral: true
+            } else if (find.includes("list=")) {
+                exec(`yt-dlp --flat-playlist --print-json "${find}"`, async (error, stdout) => {
+                    if (error) {
+                        interaction.editReply({
+                            content: "❌ Error fetching playlist info.",
+                            ephemeral: true
+                        });
+                        return;
+                    }
+    
+                    const videoUrls = stdout.split("\n").map(line => {
+                        try {
+                            return JSON.parse(line).url;
+                        } catch {
+                            return null;
+                        }
+                    }).filter(url => url);
+    
+                    if (videoUrls.length === 0) {
+                        interaction.editReply({
+                            content: "🚫 No playable videos found in the playlist.",
+                            ephemeral: true
+                        });
+                        return;
+                    }
+    
+                    interaction.editReply(`🎵 Found ${videoUrls.length} songs. Downloading one by one...`);
+    
+                    for (const videoUrl of videoUrls) {
+                        try {
+                            const success = await downloadAndQueue(videoUrl, interaction, voiceChannel, firstSongStarted);
+                            if (!firstSongStarted && success) {
+                                firstSongStarted = true;
+                                firstSongStartedMap.set(guildId, true);  
+                            }
+                        } catch (err) {
+                            logger.error(`❌ Błąd pobierania: ${videoUrl}`);
+                        }
+                    }
+    
+                    interaction.channel.send("🎶 Every song added to queue!");
                 });
+            } else {
+                await downloadAndQueue(find, interaction, voiceChannel, firstSongStarted);
+                if (!firstSongStarted) {
+                    firstSongStarted = true;
+                    firstSongStartedMap.set(guildId, true); 
+                }
             }
+        } catch (error) {
+            interaction.editReply({
+                content: `❌ Error occurred: ${error.message}`,
+                ephemeral: true
+            });
         }
+    }
 }        
 
+// Pobierz i dodaj utwór do kolejki
 async function downloadAndQueue(searchTerm, interaction, voiceChannel, firstSongStarted) {
     return new Promise((resolve) => {
         const guildId = interaction.guild.id;
@@ -236,4 +238,3 @@ async function downloadAndQueue(searchTerm, interaction, voiceChannel, firstSong
         });
     });
 }
-

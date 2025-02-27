@@ -3,11 +3,9 @@ const path = require("path");
 const fs = require("fs");
 
 const logDir = "logs";
-const errorDir = path.join(logDir, "error");
-const infoDir = path.join(logDir, "info");
-const debugDir = path.join(logDir, "debug");
 
-[logDir, errorDir, infoDir, debugDir].forEach((dir) => {
+
+[logDir].forEach((dir) => {
     if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
     }
@@ -23,9 +21,9 @@ const logger = winston.createLogger({
         })
     ),
     transports: [
-        new winston.transports.File({ filename: path.join(errorDir, "error.log"), level: "error" }),
-        new winston.transports.File({ filename: path.join(infoDir, "info.log"), level: "info" }),
-        new winston.transports.File({ filename: path.join(debugDir, "debug.log"), level: "debug" }),
+        new winston.transports.File({ filename: path.join(logDir, "error.log"), level: "error" }),
+        new winston.transports.File({ filename: path.join(logDir, "info.log"), level: "info" }),
+        new winston.transports.File({ filename: path.join(logDir, "debug.log"), level: "debug" }),
         new winston.transports.Console({
             format: winston.format.combine(
                 winston.format.colorize(),

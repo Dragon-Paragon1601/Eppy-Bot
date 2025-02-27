@@ -6,5 +6,5 @@ module.exports = {
   databaseToken: process.env.databaseToken,
   spotify_client_ID: process.env.spotify_client_ID,
   spotify_secret: process.env.spotify_secret,
-  allowUsers: process.env.allowedUserssplit ? process.env.allowedUserssplit(',') : [],
+  allowUsers: process.env.allowlist,
 };

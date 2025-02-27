@@ -10,9 +10,11 @@ function clearAudioFolders() {
         return;
     }
 
+    // Pobierz pliki kolejki
     const queueFiles = fs.readdirSync(queueBaseDir).filter(file => file.startsWith("queue_") && file.endsWith(".json"));
     const activeGuilds = queueFiles.map(file => file.replace("queue_", "").replace(".json", ""));
 
+    // Przejdź przez foldery gildii
     fs.readdir(audioBaseDir, (err, guildFolders) => {
         if (err) {
             logger.error(`❌ Nie można odczytać zawartości folderu audio: ${err}`);

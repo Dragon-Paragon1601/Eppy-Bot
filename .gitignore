@@ -1,4 +1,5 @@
 src/functions/handlers/queueConfig.json
+send_commit_gui.ps1
 node_modules/
 cookies.txt
 Done.txt

@@ -5,6 +5,7 @@ const petDataPath = path.join(__dirname, '../../../data/petData.json');
 
 let petData = {};
 
+// Wczytaj dane z pliku JSON
 function loadPetData() {
     if (fs.existsSync(petDataPath)) {
         const rawData = fs.readFileSync(petDataPath);
@@ -15,10 +16,12 @@ function loadPetData() {
     }
 }
 
+// Zapisz dane do pliku JSON
 function savePetData() {
     fs.writeFileSync(petDataPath, JSON.stringify(petData, null, 2));
 }
 
+// Dodaj petted dla użytkownika na serwerze
 function addPet(guildId, userId) {
     if (!petData[guildId]) {
         petData[guildId] = {};
@@ -30,29 +33,35 @@ function addPet(guildId, userId) {
     savePetData();
 }
 
+// Pobierz liczbę petted dla użytkownika na serwerze
 function getPetCount(guildId, userId) {
     return petData[guildId]?.[userId] || 0;
 }
 
-
-function setCooldown(userId) {
-    petData.cooldowns[userId] = Date.now() + 3600000;
+// Ustaw cooldown dla użytkownika na serwerze
+function setCooldown(guildId, userId) {
+    if (!petData.cooldowns[guildId]) {
+        petData.cooldowns[guildId] = {};
+    }
+    petData.cooldowns[guildId][userId] = Date.now() + 3600000; 
     savePetData();
 }
 
-function isOnCooldown(userId) {
-    const cooldown = petData.cooldowns?.[userId];
+// Sprawdź czy użytkownik jest na cooldownie na serwerze
+function isOnCooldown(guildId, userId) {
+    const cooldown = petData.cooldowns?.[guildId]?.[userId];
     if (!cooldown) return false;
     const remainingTime = cooldown - Date.now();
     if (remainingTime > 0) {
         return remainingTime;
     } else {
-        delete petData.cooldowns[userId];
+        delete petData.cooldowns[guildId][userId];
         savePetData();
         return false;
     }
 }
 
+// Pobierz top petted na serwerze
 function getTopPetters(guildId) {
     const guildPetData = petData[guildId] || {};
     return Object.entries(guildPetData)

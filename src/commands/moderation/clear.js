@@ -1,7 +1,7 @@
 const { 
-  SlashCommandBuilder,
-  PermissionFlagsBits, 
-  MessageFlags,
+    SlashCommandBuilder,
+    PermissionFlagsBits, 
+    MessageFlags,
 } = require('discord.js');
 const logger = require("./../../logger");
 
@@ -30,10 +30,11 @@ module.exports = {
 
         try {
             await interaction.deferReply();
-            const infoMessage = await channel.send({
+            const infoMessage = await interaction.followUp({
                 content: amount 
                     ? `🧹 Deleting ${amount} messages...`
-                    : `🧹 Deleting all messages...`
+                    : `🧹 Deleting all messages...`,
+                ephemeral: true
             });
 
             if (amount) {
@@ -57,9 +58,18 @@ module.exports = {
                 });
             }
         } catch (error) {
-            logger.error(err => logger.error(`usuwanie wiadomości: ${err}`));
-            return channel.send({
-                content: "❌ Failed to delete messages. Make sure messages are not older than 14 days."
+            logger.error(`Error deleting messages: ${error.message}`);
+            let errorMessage = "❌ Failed to delete messages.";
+
+            if (error.message.includes("14 days")) {
+                errorMessage += " Make sure messages are not older than 14 days.";
+            } else if (error.message.includes("permissions")) {
+                errorMessage += " Check bot permissions.";
+            }
+
+            return interaction.followUp({
+                content: errorMessage,
+                ephemeral: true
             });
         }
     }
