@@ -65,6 +65,7 @@ module.exports = (client) => {
       logger.info(`✅ Wszystkie komendy zostały odświeżone.`);
     } catch (error) {
       logger.error(`❌ Błąd przy rejestracji komend: ${error}`);
+      logger.error(`❌ Błąd przy rejestracji komend: ${error}`);
     }
   };
   

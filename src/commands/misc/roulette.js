@@ -39,7 +39,8 @@ module.exports = {
         }
 
         if (!config.allowUsers.includes(userId)) {
-            if (!hasLives(guildId, userId)) {
+            const hasLivesLeft = await hasLives(guildId, userId);
+            if (!hasLivesLeft) {
                 return interaction.reply({
                     content: "🚫 You have no lives left. Please wait until tomorrow to play again.",
                     ephemeral: true,
@@ -61,7 +62,15 @@ module.exports = {
         if (action === "shoot") {
             result = outcomes[Math.floor(Math.random() * outcomes.length)];
             if (result === "💥 You lost!") {
-                await updateLives(guildId, userId, -1);
+                const { lives } = await getUserData(guildId, userId);
+                if (lives > 0) {
+                    await updateLives(guildId, userId, -1);
+                } else {
+                    return interaction.reply({
+                        content: "🚫 You have no lives left. Please wait until tomorrow to play again.",
+                        ephemeral: true,
+                    });
+                }
             } else {
                 await addCurrency(guildId, userId, 1);
             }

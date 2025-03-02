@@ -69,7 +69,10 @@ client.login(config.token);
 logUsage();
 setInterval(monitorUsage, 3000);
 (async () => {
-  await connect(config.databaseToken).catch(console.error);
+  await connect(config.databaseToken, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+  }).catch(console.error) ;
 })();
 
 module.exports = { client };

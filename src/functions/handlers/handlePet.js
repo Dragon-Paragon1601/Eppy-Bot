@@ -22,7 +22,7 @@ async function getPetCount(guildId, userId) {
 
 // Ustaw cooldown dla użytkownika na serwerze
 async function setCooldown(guildId, userId) {
-    const cooldownTime = Date.now() + 3600000;
+    const cooldownTime = Date.now() + 3600000; // 1 hour cooldown
     let pet = await Pet.findOne({ guildId, userId });
     if (pet) {
         pet.cooldown = cooldownTime;
@@ -34,15 +34,28 @@ async function setCooldown(guildId, userId) {
 
 // Sprawdź czy użytkownik jest na cooldownie na serwerze
 async function isOnCooldown(guildId, userId) {
-    const pet = await Pet.findOne({ guildId, userId });
-    if (!pet || !pet.cooldown) return false;
+    let pet = await Pet.findOne({ guildId, userId });
+    if (!pet) {
+        pet = new Pet({ guildId, userId, count: 0, cooldown: 0 });
+        await pet.save().catch(err => logger.error(`Błąd zapisu petData: ${err}`));
+        return {
+            onCooldown: false,
+            remainingTime: 0
+        };
+    }
     const remainingTime = pet.cooldown - Date.now();
     if (remainingTime > 0) {
-        return remainingTime;
+        return {
+            onCooldown: true,
+            remainingTime
+        };
     } else {
         pet.cooldown = 0;
-        await pet.save();
-        return false;
+        await pet.save().catch(err => logger.error(`Błąd zapisu petData: ${err}`));
+        return {
+            onCooldown: false,
+            remainingTime: 0
+        };
     }
 }
 

@@ -11,12 +11,5 @@ module.exports = {
       setInterval(() => client.pickPresence(), 30 * 1000);
     } 
     logger.info(`✅ Ready! ${client.user.tag} jest online na ${client.guilds.cache.size} serwerach!`);
-    
-    if (!config.databaseToken) return;
-
-    await mongoose.connect(config.databaseToken || '' , {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-  });
   },
 };

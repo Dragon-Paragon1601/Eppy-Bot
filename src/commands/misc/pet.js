@@ -25,7 +25,7 @@ module.exports = {
         const action = interaction.options.getString("action");
 
         if (action === "ranking") {
-            const topPetters = await getTopPetters(guildId); // ✅ Dodajemy await
+            const topPetters = await getTopPetters(guildId); 
             if (!topPetters || topPetters.length === 0) {
                 return interaction.reply({ content: "No pets yet! Be the first to pet Eppy! 🐾", ephemeral: true });
             }
@@ -38,11 +38,11 @@ module.exports = {
         }
 
         if (action === "pet") {
-            const cooldown = isOnCooldown(guildId, userId);
+            const cooldownStatus = await isOnCooldown(guildId, userId); 
             if (!config.allowUsers.includes(userId)) {
-                if (cooldown) {
-                    const minutes = Math.floor(cooldown / 60000);
-                    const seconds = Math.floor((cooldown % 60000) / 1000);
+                if (cooldownStatus.onCooldown) {
+                    const minutes = Math.floor(cooldownStatus.remainingTime / 60000);
+                    const seconds = Math.floor((cooldownStatus.remainingTime % 60000) / 1000);
                     return interaction.reply({
                         content: `🚫 You have already petted Eppy recently. \nPlease wait ${minutes} minutes and ${seconds} seconds before petting again.`,
                         ephemeral: true,
@@ -61,9 +61,9 @@ module.exports = {
                 content: `🐾 ${newStatus}`,
             });
 
-            addPet(guildId, userId);
+            await addPet(guildId, userId);
             if (!config.allowUsers.includes(userId)) {
-                setCooldown(guildId, userId);
+                await setCooldown(guildId, userId); 
             }
 
             setTimeout(() => {
