@@ -23,7 +23,7 @@ module.exports = {
         const action = interaction.options.getString("action");
 
         if (action === "lives") {
-            const { lives, currency } = getUserData(guildId, userId);
+            const { lives, currency } = await getUserData(guildId, userId);
             return interaction.reply({
                 content: `Your \nLives: **${lives}** ❤️ \nCoins: **${currency}** 🪙.`,
                 ephemeral: true,
@@ -31,7 +31,7 @@ module.exports = {
         }
 
         if (action === "rank") {
-            const topUsers = getTopUsers(guildId);
+            const topUsers = await getTopUsers(guildId);
             const rankList = topUsers.map((user, index) => `${index + 1}. <@${user.userId}> **${user.lives}** ❤️ with **${user.currency}** 🪙`).join("\n");
             return interaction.reply({
                 content: `🏆 **Top Users** 🏆\n${rankList}`,
@@ -61,9 +61,9 @@ module.exports = {
         if (action === "shoot") {
             result = outcomes[Math.floor(Math.random() * outcomes.length)];
             if (result === "💥 You lost!") {
-                updateLives(guildId, userId, -1);
+                await updateLives(guildId, userId, -1);
             } else {
-                addCurrency(guildId, userId, 1);
+                await addCurrency(guildId, userId, 1);
             }
         } else if (action === "roll") {
             result = "🔄 You rolled the cylinder. The game continues.";

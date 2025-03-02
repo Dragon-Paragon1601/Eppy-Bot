@@ -1,83 +1,71 @@
 const fs = require('fs');
 const path = require('path');
-
-const rouletteDataPath = path.join(__dirname, '../../../data/rouletteData.json');
-
-let rouletteData = {};
-
-// Wczytaj dane z pliku JSON
-function loadRouletteData() {
-    if (fs.existsSync(rouletteDataPath)) {
-        const rawData = fs.readFileSync(rouletteDataPath);
-        rouletteData = JSON.parse(rawData);
-    }
-}
-
-// Zapisz dane do pliku JSON
-function saveRouletteData() {
-    fs.writeFileSync(rouletteDataPath, JSON.stringify(rouletteData, null, 2));
-}
-
-// Inicjalizuj dane użytkownika
-function initUserData(guildId, userId) {
-    if (!rouletteData[guildId]) {
-        rouletteData[guildId] = {};
-    }
-    if (!rouletteData[guildId][userId]) {
-        rouletteData[guildId][userId] = { lives: 3, currency: 0, lastPlayed: null };
-    }
-}
+const Roulette = require("../../schemas/roulette"); 
+const logger = require("../../logger");
 
 // Dodaj lub odejmij życie użytkownika
-function updateLives(guildId, userId, change) {
-    initUserData(guildId, userId);
-    rouletteData[guildId][userId].lives += change;
-    saveRouletteData();
+async function updateLives(guildId, userId, amount) {
+    let user = await Roulette.findOne({ guildId, userId });
+    if (user) {
+        user.lives += amount;
+        await user.save().catch(err => logger.error(`Błąd zapisu user: ${err}`));
+    } else {
+        user = new Roulette({ guildId, userId, lives: 3, currency: 0, lastPlayed: null });
+        await user.save().catch(err => logger.error(`Błąd zapisu user: ${err}`));
+    }
 }
 
 // Dodaj walutę użytkownikowi
-function addCurrency(guildId, userId, amount) {
-    initUserData(guildId, userId);
-    rouletteData[guildId][userId].currency += amount;
-    saveRouletteData();
+async function addCurrency(guildId, userId, amount) {
+    let user = await Roulette.findOne({ guildId, userId });
+    if (user) {
+        user.currency += amount;
+        await user.save().catch(err => logger.error(`Błąd zapisu user: ${err}`));
+    } else {
+        user = new Roulette({ guildId, userId, currency: amount, lives: 3, lastPlayed: null });
+        await user.save().catch(err => logger.error(`Błąd zapisu user: ${err}`));
+    }
 }
 
 // Sprawdź czy użytkownik ma życie
-function hasLives(guildId, userId) {
-    initUserData(guildId, userId);
-    return rouletteData[guildId][userId].lives > 0;
+async function hasLives(guildId, userId) {
+    const user = await Roulette.findOne({ guildId, userId }).lean();
+    return user ? user.lives > 0 : false;
 }
 
 // Pobierz ilość żyć i waluty użytkownika
-function getUserData(guildId, userId) {
-    initUserData(guildId, userId);
-    return rouletteData[guildId][userId];
+async function getUserData(guildId, userId) {
+    const user = await Roulette.findOne({ guildId, userId }).lean();
+    return user || { lives: 3, currency: 0, lastPlayed: null };
 }
 
 // Zresetuj życie użytkowników na nowy dzień
-function resetLives() {
+async function resetLives() {
     const now = new Date();
-    for (const guildId in rouletteData) {
-        for (const userId in rouletteData[guildId]) {
-            const userData = rouletteData[guildId][userId];
-            const lastPlayed = new Date(userData.lastPlayed);
-            if (now.getDate() !== lastPlayed.getDate()) {
-                userData.lives = 3;
-                userData.lastPlayed = now;
-            }
-        }
+    const resetTime = new Date(now.setHours(0, 0, 0, 0)); // Resetuj godzinę, minutę, sekundę, milisekundę
+    try {
+        await Roulette.updateMany(
+            { lastPlayed: { $lt: resetTime } }, 
+            { lives: 3, lastPlayed: now } 
+        );
+        logger.info("Lives reset successfully.");
+    } catch (err) {
+        logger.error(`Błąd resetLives: ${err}`);
     }
-    saveRouletteData();
 }
 
 // Pobierz ranking użytkowników na serwerze
-function getTopUsers(guildId) {
-    const guildData = rouletteData[guildId] || {};
-    return Object.entries(guildData)
-        .sort(([, a], [, b]) => b.currency - a.currency)
-        .map(([userId, data]) => ({ userId, lives: data.lives, currency: data.currency }));
-}
+async function getTopUsers(guildId) {
+    const topUsers = await Roulette.find({ guildId })
+        .sort({ currency: -1 })
+        .limit(10)
+        .lean();
 
-loadRouletteData();
+    return topUsers.map(user => ({
+        userId: user.userId,
+        lives: user.lives,
+        currency: user.currency,
+    }));
+}
 
 module.exports = { updateLives, addCurrency, hasLives, resetLives, getUserData, getTopUsers };

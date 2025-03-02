@@ -1,7 +1,7 @@
 const { Routes } = require("discord-api-types/v9");
 const { REST } = require("@discordjs/rest");
 const logger = require("./../../logger");
-const { client_ID } = process.env;
+const config = require("./../../config");
 const path = require('path');
 const fs = require("fs");
 
@@ -46,8 +46,7 @@ module.exports = (client) => {
   
     logger.info(`📜 Rejestrowane komendy: ${client.commandArray.map(cmd => cmd.name).join(", ")}`);
 
-    const clientId = client_ID || "880185153081704528";
-    const rest = new REST({ version: "9" }).setToken(process.env.token);
+    const rest = new REST({ version: "9" }).setToken(config.token);
     try {
       logger.debug(`🚀 Aktualizowanie komend na serwerach...`);
       const guilds = client.guilds.cache;
@@ -58,7 +57,7 @@ module.exports = (client) => {
       }
     
       guilds.forEach((guild) => {
-        rest.put(Routes.applicationGuildCommands(clientId, guild.id), { body: client.commandArray })
+        rest.put(Routes.applicationGuildCommands(config.client_ID, guild.id), { body: client.commandArray })
           .then(() => logger.debug(`🔄 Ładowanie komend na: ${guild.id}`))
           .catch((error) => logger.error(`❌ Błąd przy ładowaniu komend dla: ${guild.id} ${error}`));
       });

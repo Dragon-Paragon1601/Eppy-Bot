@@ -1,74 +1,60 @@
 const fs = require('fs');
 const path = require('path');
-
-const petDataPath = path.join(__dirname, '../../../data/petData.json');
-
-let petData = {};
-
-// Wczytaj dane z pliku JSON
-function loadPetData() {
-    if (fs.existsSync(petDataPath)) {
-        const rawData = fs.readFileSync(petDataPath);
-        petData = JSON.parse(rawData);
-    }
-    if (!petData.cooldowns) {
-        petData.cooldowns = {};
-    }
-}
-
-// Zapisz dane do pliku JSON
-function savePetData() {
-    fs.writeFileSync(petDataPath, JSON.stringify(petData, null, 2));
-}
+const Pet = require("../../schemas/pet"); 
+const logger = require("../../logger");
 
 // Dodaj petted dla użytkownika na serwerze
-function addPet(guildId, userId) {
-    if (!petData[guildId]) {
-        petData[guildId] = {};
+async function addPet(guildId, userId) {
+    let pet = await Pet.findOne({ guildId, userId });
+    if (pet) {
+        pet.count += 1;
+    } else {
+        pet = new Pet({ guildId, userId, count: 1 });
     }
-    if (!petData[guildId][userId]) {
-        petData[guildId][userId] = 0;
-    }
-    petData[guildId][userId] += 1;
-    savePetData();
+    await pet.save().catch(err => logger.error(`Błąd zapisu petData: ${err}`));
 }
 
 // Pobierz liczbę petted dla użytkownika na serwerze
-function getPetCount(guildId, userId) {
-    return petData[guildId]?.[userId] || 0;
+async function getPetCount(guildId, userId) {
+    const pet = await Pet.findOne({ guildId, userId });
+    return pet ? pet.count : 0;
 }
 
 // Ustaw cooldown dla użytkownika na serwerze
-function setCooldown(guildId, userId) {
-    if (!petData.cooldowns[guildId]) {
-        petData.cooldowns[guildId] = {};
+async function setCooldown(guildId, userId) {
+    const cooldownTime = Date.now() + 3600000;
+    let pet = await Pet.findOne({ guildId, userId });
+    if (pet) {
+        pet.cooldown = cooldownTime;
+    } else {
+        pet = new Pet({ guildId, userId, cooldown: cooldownTime });
     }
-    petData.cooldowns[guildId][userId] = Date.now() + 3600000; 
-    savePetData();
+    await pet.save().catch(err => logger.error(`Błąd ustawiania cooldown: ${err}`));
 }
 
 // Sprawdź czy użytkownik jest na cooldownie na serwerze
-function isOnCooldown(guildId, userId) {
-    const cooldown = petData.cooldowns?.[guildId]?.[userId];
-    if (!cooldown) return false;
-    const remainingTime = cooldown - Date.now();
+async function isOnCooldown(guildId, userId) {
+    const pet = await Pet.findOne({ guildId, userId });
+    if (!pet || !pet.cooldown) return false;
+    const remainingTime = pet.cooldown - Date.now();
     if (remainingTime > 0) {
         return remainingTime;
     } else {
-        delete petData.cooldowns[guildId][userId];
-        savePetData();
+        pet.cooldown = 0;
+        await pet.save();
         return false;
     }
 }
 
 // Pobierz top petted na serwerze
-function getTopPetters(guildId) {
-    const guildPetData = petData[guildId] || {};
-    return Object.entries(guildPetData)
-        .sort(([, a], [, b]) => b - a)
-        .map(([userId, count]) => ({ userId, count }));
+async function getTopPetters(guildId) {
+    const topPetters = await Pet.find({ guildId }) 
+        .sort({ count: -1 })
+        .limit(10);
+    return topPetters.map(pet => ({
+        userId: pet.userId,
+        count: pet.count
+    }));
 }
-
-loadPetData();
 
 module.exports = { addPet, getPetCount, setCooldown, isOnCooldown, getTopPetters };

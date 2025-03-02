@@ -6,11 +6,9 @@ const logger = require("./logger");
 const config = require("./config");
 const pidusage = require("pidusage");
 const { connect } = require("mongoose");
-const { setActivity } = require("./functions/tools/rpc");
 const { Client, Collection, GatewayIntentBits,  } = require("discord.js");
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
-const token = config.token;
-const databaseToken = config.databaseToken;
+
 
 client.commands = new Collection();
 client.commandArray = [];
@@ -60,23 +58,18 @@ async function logUsage() {
       🏗️ RAM: ${(stats.memory / 1024 / 1024).toFixed(2)} MB`);
   }, 60000); 
 }
-async function activityUpdate() {
-  setInterval(async () => {
-    setActivity
-  }, 60000); 
-}
+
 
 client.handleEvents();
 client.once('ready', async () => {
   await client.handleCommands();  
 });
-client.login(token);
+client.login(config.token);
 
 logUsage();
-activityUpdate();
 setInterval(monitorUsage, 3000);
-// (async () => {
-//   await connect(databaseToken).catch(console.error);
-// })();
+(async () => {
+  await connect(config.databaseToken).catch(console.error);
+})();
 
 module.exports = { client };

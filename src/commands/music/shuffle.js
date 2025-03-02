@@ -25,8 +25,8 @@ module.exports = {
                    content: "🎵 Queue is epmty!"
                 });
             }
-        
-            const displayedQueue = queue.slice(0, 25)
+            const queueNew = getQueue(guildId);
+            const displayedQueue = queueNew.slice(0, 25)
                 .map((file, index) => {
                     const songName = path.basename(file)
                         .replace(/\.mp3$/, "")
@@ -35,8 +35,8 @@ module.exports = {
                 })
                 .join("\n");
         
-            const queueMessage = queue.length > 25 
-                ? `📁 **Current queue:**\n${displayedQueue}\n...and **${queue.length - 25}** more songs!`
+            const queueMessage = queueNew.length > 25 
+                ? `📁 **Current queue:**\n${displayedQueue}\n...and **${queueNew.length - 25}** more songs!`
                 : `📁 **Current queue:**\n${displayedQueue}`;
         
             return interaction.reply({

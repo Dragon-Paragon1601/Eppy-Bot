@@ -9,9 +9,10 @@ const logger = require("./../../logger");
  * @param {number} activityType - Typ aktywności (0 - Playing, 1 - Streaming, 2 - Listening, 3 - Watching, 5 - Competing).
  * @param {string} activityName - Nazwa aktywności (opis, np. "Minecraft").
  * @param {string} stateName - Nazwa stanu (np. "Eppy Bot (1 z 1)").
+ * @param {string} detailsName - Nazwa szczegółów (np. "Program by Dragon").
  * @param {string} [streamURL] - URL streama (opcjonalnie, wymagane dla STREAMING).
  */
-function setBotPresence(client, status, activityType, activityName, stateName, streamURL = '') {
+function setBotPresence(client, status, activityType, activityName, stateName, detailsName, streamURL = '') {
     // Sprawdź, czy typ aktywności jest prawidłowy
     if (![0, 1, 2, 3, 5].includes(activityType)) {
         logger.error(`❌ Błąd: Nieprawidłowy typ aktywności: ${activityType}`);
@@ -26,6 +27,7 @@ function setBotPresence(client, status, activityType, activityName, stateName, s
                 name: activityName,
                 type: activityType,
                 state: stateName,
+                details: detailsName,
                 url: activityType === 1 ? streamURL : null,
             }],
         });

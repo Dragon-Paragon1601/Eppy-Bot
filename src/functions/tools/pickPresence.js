@@ -1,5 +1,6 @@
 const { ActivityType } = require("discord.js");
 const logger = require("./../../logger");
+
 module.exports = (client) => {
     if (!client) {
         logger.error("❌ BŁĄD: Client nie istnieje!");
@@ -28,8 +29,6 @@ module.exports = (client) => {
             }],
             status: "online"
         });
-
-        logger.info("✅ Domyślny status ustawiony!");
     };
 
     client.once("ready", () => {

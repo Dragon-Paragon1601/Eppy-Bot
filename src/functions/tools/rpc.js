@@ -26,5 +26,3 @@ rpc.on("ready", () => {
 });
 
 rpc.login({ clientId }).catch(err => logger.error(`Błąd z rpc clientId: ${err}`));
-
-module.exports = { setActivity };

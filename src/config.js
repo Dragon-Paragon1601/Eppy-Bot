@@ -7,4 +7,5 @@ module.exports = {
   spotify_client_ID: process.env.spotify_client_ID,
   spotify_secret: process.env.spotify_secret,
   allowUsers: process.env.allowlist,
+  mongoURL: process.env.mongoURL,
 };

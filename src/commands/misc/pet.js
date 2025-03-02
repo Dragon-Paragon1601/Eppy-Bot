@@ -1,8 +1,9 @@
 const { SlashCommandBuilder } = require("discord.js");
 const config = require("../../config");
 const logger = require("./../../logger");
-const { setActivity } = require("../../functions/tools/rpc");
+const { setBotPresence } = require("../../functions/handlers/handlePresence");
 const { addPet, setCooldown, isOnCooldown, getTopPetters } = require("../../functions/handlers/handlePet");
+const { client } = require("../../bot");
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -16,6 +17,7 @@ module.exports = {
                     { name: "pet", value: "pet" },
                     { name: "ranking", value: "ranking" }
                 )),
+
     async execute(interaction) {
         const guildId = interaction.guild.id;
         const userId = interaction.user.id;
@@ -23,9 +25,13 @@ module.exports = {
         const action = interaction.options.getString("action");
 
         if (action === "ranking") {
-            const topPetters = getTopPetters(guildId);
-            const topPettersList = topPetters.map((petter, index) => `${index + 1}. <@${petter.userId}>: ${petter.count} pets`).join("\n");
-
+            const topPetters = await getTopPetters(guildId); // ✅ Dodajemy await
+            if (!topPetters || topPetters.length === 0) {
+                return interaction.reply({ content: "No pets yet! Be the first to pet Eppy! 🐾", ephemeral: true });
+            }
+            const topPettersList = topPetters
+                .map((petter, index) => `${index + 1}. <@${petter.userId}>: ${petter.count} pets`)
+                .join("\n");
             return interaction.reply({
                 content: `🏆 **Top Petters** 🏆\n${topPettersList}`,
             });
@@ -62,8 +68,8 @@ module.exports = {
 
             setTimeout(() => {
                 logger.debug("Resetting activity to default.");
-                setActivity();
-            }, 15000);
+                setBotPresence(client, "online", 0, "Programed", "By Dragon (1 / 1)", "Creating Eppy Bot" );
+            }, 60000);
         }
     }
 };
