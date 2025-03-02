@@ -9,7 +9,7 @@ module.exports = {
 
     async execute(interaction) {
         const guildId = interaction.guild.id;
-        const queue = getQueue(guildId);
+        const queue = await getQueue(guildId); // Dodajemy await, aby upewnić się, że kolejka jest pobrana z MongoDB
 
         if (!queue || queue.length < 2) {
             return interaction.reply({
@@ -18,29 +18,24 @@ module.exports = {
             });
         }
 
-        shuffleQueue(guildId);
+        await shuffleQueue(guildId); // Dodajemy await, aby upewnić się, że kolejka jest przetasowana przed kontynuacją
 
-        if (!queue || queue.length === 0) {
-                return interaction.reply({
-                   content: "🎵 Queue is epmty!"
-                });
-            }
-            const queueNew = getQueue(guildId);
-            const displayedQueue = queueNew.slice(0, 25)
-                .map((file, index) => {
-                    const songName = path.basename(file)
-                        .replace(/\.mp3$/, "")
-                        .replace(/_/g, " ");
-                    return `\`${index + 1}.\` **${songName}**`;
-                })
-                .join("\n");
-        
-            const queueMessage = queueNew.length > 25 
-                ? `📁 **Current queue:**\n${displayedQueue}\n...and **${queueNew.length - 25}** more songs!`
-                : `📁 **Current queue:**\n${displayedQueue}`;
-        
-            return interaction.reply({
-                content: `🔀 Queue shuffled!\n\n${queueMessage}`,
-                });
+        const queueNew = await getQueue(guildId); // Dodajemy await, aby upewnić się, że nowa kolejka jest pobrana z MongoDB
+        const displayedQueue = queueNew.slice(0, 25)
+            .map((file, index) => {
+                const songName = path.basename(file)
+                    .replace(/\.mp3$/, "")
+                    .replace(/_/g, " ");
+                return `\`${index + 1}.\` **${songName}**`;
+            })
+            .join("\n");
+
+        const queueMessage = queueNew.length > 25 
+            ? `📁 **Current queue:**\n${displayedQueue}\n...and **${queueNew.length - 25}** more songs!`
+            : `📁 **Current queue:**\n${displayedQueue}`;
+
+        return interaction.reply({
+            content: `🔀 Queue shuffled!\n\n${queueMessage}`,
+        });
     }
 };

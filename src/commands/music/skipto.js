@@ -4,9 +4,9 @@ const {
   saveQueue,
   isPlay, 
   playersStop,
+  playNext
 } = require("../../functions/handlers/handleMusic");
 const path = require("path");
-
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -20,8 +20,8 @@ module.exports = {
 
     async execute(interaction) {
         const guildId = interaction.guild.id;
-        let queue = getQueue(guildId);
-        const amount = interaction.options.getInteger("index");
+        let queue = await getQueue(guildId); // Dodajemy await, aby upewnić się, że kolejka jest pobrana z MongoDB
+        const amount = interaction.options.getInteger("index") - 2;
     
         if (!queue || queue.length === 0) {
             return interaction.reply({
@@ -32,18 +32,19 @@ module.exports = {
     
         if (amount <= 0 || amount >= queue.length) {
             return interaction.reply({
-                content: "🚫 Wrogn song number!",
+                content: "🚫 Wrong song number!",
                 ephemeral: true
             });
         }
     
         isPlay(guildId);
         queue.splice(0, amount);
-        saveQueue(guildId, queue);
+        await saveQueue(guildId, queue); // Dodajemy await, aby upewnić się, że kolejka jest zapisana w MongoDB
     
         interaction.reply({
-            content: `⏭️ Skiped **${amount}**.`
+            content: `⏭️ Skipped to song number **${amount}**.`
         });
-        playersStop(guildId)
-        }
-    };
+        playersStop(guildId);
+        await playNext(guildId, interaction); // Dodajemy await, aby upewnić się, że następna piosenka jest odtwarzana
+    }
+};

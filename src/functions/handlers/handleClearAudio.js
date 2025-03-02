@@ -1,18 +1,18 @@
 const fs = require("fs");
 const path = require("path");
 const logger = require("./../../logger");
+const Queue = require("../../schemas/queue");
 const audioBaseDir = path.join(__dirname, "../../../music/audio");
-const queueBaseDir = path.join(__dirname, "../../../music/queue");
 
-function clearAudioFolders() {
+async function clearAudioFolders() {
     if (!fs.existsSync(audioBaseDir)) {
         logger.info("📂 Folder bazowy audio nie istnieje.");
         return;
     }
 
-    // Pobierz pliki kolejki
-    const queueFiles = fs.readdirSync(queueBaseDir).filter(file => file.startsWith("queue_") && file.endsWith(".json"));
-    const activeGuilds = queueFiles.map(file => file.replace("queue_", "").replace(".json", ""));
+    // Pobierz wszystkie kolejki z bazy danych
+    const queues = await Queue.find({});
+    const activeGuilds = queues.map(queue => queue.guildId);
 
     // Przejdź przez foldery gildii
     fs.readdir(audioBaseDir, (err, guildFolders) => {
@@ -27,18 +27,8 @@ function clearAudioFolders() {
                 return;
             }
 
-            const guildQueuePath = path.join(queueBaseDir, `queue_${guildId}.json`);
-            let queue = [];
-
-            try {
-                const queueData = fs.readFileSync(guildQueuePath, "utf-8");
-                queue = JSON.parse(queueData);
-            } catch (readError) {
-                logger.error(`❌ Błąd odczytu kolejki dla ${guildId}: ${readError}`);
-                return;
-            }
-
-            if (queue.length > 0) {
+            const queue = queues.find(queue => queue.guildId === guildId);
+            if (queue && queue.songs.length > 0) {
                 logger.info(`✅ Kolejka dla gildii ${guildId} NIE jest pusta - pomijam usuwanie.`);
                 return;
             }

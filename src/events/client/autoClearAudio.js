@@ -2,33 +2,25 @@ const fs = require('fs');
 const path = require('path');
 const logger = require("./../../logger");
 const { clearAudioFolder } = require('../../functions/handlers/handleClearAudio');
+const Queue = require("../../schemas/queue");
 
-function autoClearAudio(guildId) {
+async function autoClearAudio(guildId) {
     if (!guildId) {
         logger.error("❌ Brak ID gildii! Nie można wyczyścić kolejki.");
         return;
     }
 
-    const queueFilePath = path.join(__dirname, `../../../music/queue/${guildId}/queue_${guildId}.json`);
-
-    if (!fs.existsSync(queueFilePath)) {
-        logger.debug(`🚫 Plik kolejki dla gildii ${guildId} nie istnieje. Usuwanie plików audio...`);
-        clearAudioFolder(guildId);
-        return;
-    }
-
     try {
-        const queueContent = fs.readFileSync(queueFilePath, 'utf-8');
-        const queue = JSON.parse(queueContent);
+        const queue = await Queue.findOne({ guildId });
 
-        if (!Array.isArray(queue) || queue.length === 0) {
+        if (!queue || !Array.isArray(queue.songs) || queue.songs.length === 0) {
             logger.info(`🗑️ Kolejka dla gildii ${guildId} jest pusta. Usuwanie plików audio...`);
             clearAudioFolder(guildId);
         } else {
             logger.info(`🎵 W kolejce gildii ${guildId} są jeszcze piosenki. Pliki audio pozostają bez zmian.`);
         }
     } catch (error) {
-        logger.error(`❌ Błąd podczas odczytu pliku kolejki dla gildii ${guildId}: ${error}`);
+        logger.error(`❌ Błąd podczas odczytu kolejki dla gildii ${guildId}: ${error}`);
     }
 }
 

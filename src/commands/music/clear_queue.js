@@ -1,6 +1,10 @@
 const { SlashCommandBuilder } = require("discord.js");
-const { clearQueue, isPlay, playersStop, connections } = require("../../functions/handlers/handleMusic");
+const { clearQueue, playersStop } = require("../../functions/handlers/handleMusic");
 const { clearAudioFolders } = require("../../functions/handlers/handleClearAudio");
+const logger = require("../../logger");
+let players = require("../../functions/handlers/handleMusic").players;
+let connections = require("../../functions/handlers/handleMusic").connections;
+let isPlaying = require("../../functions/handlers/handleMusic").isPlaying;
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -10,10 +14,10 @@ module.exports = {
         try {
             const guildId = interaction.guild.id;
 
-            clearQueue(guildId);
+            await clearQueue(guildId); // Dodajemy await, aby upewnić się, że kolejka jest wyczyszczona przed kontynuacją
             if (connections[guildId]) {
                 playersStop(guildId);
-                isPlay(guildId);
+                isPlaying[guildId] = false;
                 players[guildId].stop();
                 connections[guildId]?.destroy();
                 delete connections[guildId];
@@ -23,7 +27,7 @@ module.exports = {
                 content: "🗑️ Queue cleared!"
             });
 
-            clearAudioFolders(guildId);
+            await clearAudioFolders(guildId); // Dodajemy await, aby upewnić się, że pliki audio są wyczyszczone przed kontynuacją
 
             await interaction.followUp({
                 content: "🗑️ All audio files cleared!"
@@ -31,7 +35,7 @@ module.exports = {
         } catch (error) {
             logger.error(`Error clearing queue: ${error}`);
             await interaction.reply({
-                content: "❌ Somthing went wrong while deleting queue and audio files.",
+                content: "❌ Something went wrong while deleting queue and audio files.",
                 ephemeral: true
             });
         }

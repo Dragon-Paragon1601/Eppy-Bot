@@ -10,7 +10,7 @@ module.exports = {
         await interaction.deferReply();
 
         const guildId = interaction.guild.id;
-        const queue = getQueue(guildId);
+        const queue = await getQueue(guildId); // Dodajemy await, aby upewnić się, że kolejka jest pobrana z MongoDB
 
         if (!queue || queue.length === 0) {
             return interaction.editReply({

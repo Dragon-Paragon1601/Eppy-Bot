@@ -195,7 +195,7 @@ async function downloadAndQueue(searchTerm, interaction, voiceChannel, firstSong
             } else {
                 const matches = stdoutData.match(/Destination: (.+\.mp3)/g);
                 if (matches) {
-                    const queue = getQueue(guildId); 
+                    let queue = await getQueue(guildId); 
                     const addedSongs = [];
 
                     matches.forEach(match => {
@@ -206,7 +206,7 @@ async function downloadAndQueue(searchTerm, interaction, voiceChannel, firstSong
                         }
                     });
 
-                    saveQueue(guildId, queue);
+                    await saveQueue(guildId, queue);
 
                     const textChannel = interaction.guild.channels.cache.get(getQueueChannel(guildId)) || interaction.channel;
                     if (textChannel && addedSongs.length > 0) {

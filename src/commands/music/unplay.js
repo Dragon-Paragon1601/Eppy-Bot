@@ -15,11 +15,11 @@ module.exports = {
     async execute(interaction) {
         const guildId = interaction.guild.id;
         const index = interaction.options.getInteger("index") - 1;
-        const queue = getQueue(guildId);
+        const queue = await getQueue(guildId); // Dodajemy await, aby upewnić się, że kolejka jest pobrana z MongoDB
 
         if (!queue || queue.length === 0) {
             return interaction.reply({
-                content: "🚫 Queue is epmty!",
+                content: "🚫 Queue is empty!",
                 ephemeral: true
             });
         }
@@ -30,14 +30,16 @@ module.exports = {
                 ephemeral: true
             });
         }
-        if (index = 0) {
+
+        if (index === 0) {
             return interaction.reply({
                 content: "🚫 You can't delete currently played song!",
                 ephemeral: true
             });
         }
+
         const removedSongPath = queue.splice(index, 1)[0];
-        saveQueue(guildId, queue);
+        await saveQueue(guildId, queue); // Dodajemy await, aby upewnić się, że kolejka jest zapisana w MongoDB
 
         const removedSongName = path.basename(removedSongPath)
             .replace(/\.mp3$/, "")

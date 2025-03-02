@@ -1,10 +1,11 @@
 const path = require("path");
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus } = require("@discordjs/voice");
-const configPath = path.join(__dirname, "./queueConfig.json");
 const { clearAudioFolders } = require("./handleClearAudio");
 const logger = require("./../../logger");
 const mm = require('music-metadata');
 const fs = require("fs");
+const Queue = require("../../schemas/queue");
+const QueueChannel = require("../../schemas/queueChannel");
 const firstSongStartedMap = new Map();
 let connections = {};
 let idleTimers = {};
@@ -21,53 +22,41 @@ function checkFirstSongStarted(guildId) {
 } 
 
 // Pobierz kolejkę dla danej gildii
-function getQueue(guildId) {
-    const queuePath = path.join(__dirname, `../../../music/queue/queue_${guildId}.json`);
-    if (!fs.existsSync(queuePath)) {
-        return [];
+async function getQueue(guildId) {
+    let queue = await Queue.findOne({ guildId });
+    if (!queue) {
+        queue = new Queue({ guildId, songs: [] });
+        await queue.save().catch(err => logger.error(`Błąd zapisu kolejki: ${err}`));
     }
-    try {
-        const data = fs.readFileSync(queuePath, "utf-8");
-        const parsedData = JSON.parse(data);
-        return Array.isArray(parsedData) ? parsedData : [];
-    } catch (error) {
-        logger.error(`❌ Błąd odczytu kolejki dla ${guildId}: ${error}`);
-        return [];
-    }
+    return queue.songs;
 }
 
 // Zapisz kolejkę dla danej gildii
-function saveQueue(guildId, queue) {
-    const queueDir = path.join(__dirname, "../../../music/queue");
-    const queuePath = path.join(queueDir, `queue_${guildId}.json`);
-
-    if (!fs.existsSync(queueDir)) {
-        fs.mkdirSync(queueDir, { recursive: true });
+async function saveQueue(guildId, queue) {
+    let queueDoc = await Queue.findOne({ guildId });
+    if (!queueDoc) {
+        queueDoc = new Queue({ guildId, songs: queue });
+    } else {
+        queueDoc.songs = queue;
     }
-
-    try {
-        fs.writeFileSync(queuePath, JSON.stringify(queue, null, 2), "utf-8");
-    } catch (error) {
-        logger.error(`❌ Błąd zapisu kolejki dla ${guildId}: ${error}`);
-    }
+    await queueDoc.save().catch(err => logger.error(`Błąd zapisu kolejki: ${err}`));
 }
 
 // Dodaj piosenkę do kolejki
-function addToQueue(guildId, songPath) {
-    if (!queues[guildId]) queues[guildId] = [];
-    queues[guildId].push(songPath);
-    saveQueue(guildId, queues[guildId]);
+async function addToQueue(guildId, songPath) {
+    let queue = await getQueue(guildId);
+    queue.push(songPath);
+    await saveQueue(guildId, queue);
 }
 
 // Wyczyść kolejkę dla danej gildii
-function clearQueue(guildId) {
-    queues[guildId] = [];
-    saveQueue(guildId, []);
+async function clearQueue(guildId) {
+    await saveQueue(guildId, []);
 }
 
 // Przetasuj kolejkę dla danej gildii
-function shuffleQueue(guildId, shuffleTimes = 10) {
-    let queue = getQueue(guildId);
+async function shuffleQueue(guildId, shuffleTimes = 10) {
+    let queue = await getQueue(guildId);
     if (!queue || queue.length < 3) return;
 
     for (let n = 0; n < shuffleTimes; n++) { 
@@ -77,7 +66,7 @@ function shuffleQueue(guildId, shuffleTimes = 10) {
         }
     }
 
-    saveQueue(guildId, queue);
+    await saveQueue(guildId, queue);
 }
 
 // Sprawdź czy muzyka jest odtwarzana
@@ -92,15 +81,15 @@ function playersStop(guildId) {
 }
 
 // Sprawdź czy kolejka jest pusta
-function queueEmpty(guildId, interaction) {
-    let emptyCheck = getQueue(guildId); 
+async function queueEmpty(guildId, interaction) {
+    let emptyCheck = await getQueue(guildId); 
     if (emptyCheck.length === 0) {
         logger.debug(`🚫 Kolejka dla gildii ${guildId} jest pusta.`);
         if (interaction.channel) {
             interaction.channel.send("⌛ Queue is empty. Waiting for another song!");
         }
         clearAudioFolders(guildId);
-        saveQueue(guildId, []);
+        await saveQueue(guildId, []);
 
         idleTimers[guildId] = setTimeout(() => {
             if (!queues[guildId]?.length && connections[guildId]) {
@@ -145,9 +134,9 @@ async function playNext(guildId, interaction) {
         return;
     }
 
-    let queue = getQueue(guildId);
+    let queue = await getQueue(guildId);
 
-    queueEmpty(guildId, interaction);
+    await queueEmpty(guildId, interaction);
 
     const voiceChannel = interaction.member.voice.channel;
     if (!voiceChannel) {
@@ -208,15 +197,15 @@ async function playNext(guildId, interaction) {
             }
         }, 1000);
 
-        players[guildId].once(AudioPlayerStatus.Idle, () => {
+        players[guildId].once(AudioPlayerStatus.Idle, async () => {
             clearInterval(idleTimers[guildId].progressInterval);
             sentMessage.edit(`🎶 Finished playing: **${songName}**`);
             isPlaying[guildId] = false;
             firstSongStartedMap.set(guildId, false);
-            queue = getQueue(guildId);  
+            queue = await getQueue(guildId);  
             if (queue.length > 0) {
                 queue.shift();
-                saveQueue(guildId, queue);
+                await saveQueue(guildId, queue);
             }
             playNext(guildId, interaction);  
         });
@@ -226,23 +215,9 @@ async function playNext(guildId, interaction) {
 }
 
 // Pobierz kanał kolejki dla danej gildii
-function getQueueChannel(guildId) {
-    if (!fs.existsSync(configPath)) return null;
-    const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-    return config[guildId] || null;
-}
-
-// Wczytaj konfigurację
-function loadConfig() {
-    if (!fs.existsSync(configPath)) {
-        fs.writeFileSync(configPath, JSON.stringify({}), "utf-8");
-    }
-    return JSON.parse(fs.readFileSync(configPath, "utf-8"));
-}
-
-// Zapisz konfigurację
-function saveConfig(config) {
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
+async function getQueueChannel(guildId) {
+    const queueChannel = await QueueChannel.findOne({ guildId });
+    return queueChannel ? queueChannel.channelId : null;
 }
 
 // Rozpocznij odtwarzanie muzyki
@@ -253,4 +228,4 @@ function startPlaying(interaction) {
     }
 }
 
-module.exports = { getQueue, saveQueue, addToQueue, clearQueue, playNext, startPlaying, getQueueChannel, saveConfig, loadConfig, shuffleQueue, isPlay, playersStop, connections, firstSongStartedMap, checkFirstSongStarted };
+module.exports = { getQueue, saveQueue, addToQueue, clearQueue, playNext, startPlaying, getQueueChannel, shuffleQueue, isPlay, playersStop, connections, firstSongStartedMap, checkFirstSongStarted, players, isPlaying };
