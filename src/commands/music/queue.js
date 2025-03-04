@@ -9,7 +9,7 @@ module.exports = {
         
     async execute(interaction) {
         const guildId = interaction.guild.id;
-        const queue = getQueue(guildId);
+        const queue = await getQueue(guildId);
 
         if (!queue || queue.length === 0) {
             return interaction.reply({
