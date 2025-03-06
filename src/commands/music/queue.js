@@ -10,10 +10,10 @@ let isPlaying = require("../../functions/handlers/handleMusic").isPlaying;
 module.exports = {
     data: new SlashCommandBuilder()
         .setName("queue")
-        .setDescription("Choose an action to perform on the queue.")
+        .setDescription("Commands related to queue.")
         .addStringOption(option => 
             option.setName("action")
-                .setDescription("Action to perform on the queue")
+                .setDescription("Choose action to perform on the queue")
                 .setRequired(true)
                 .addChoices(
                     { name: "queue", value: "queue" },
@@ -26,7 +26,7 @@ module.exports = {
                     { name: "unplay", value: "unplay" }
                 )
         ).addStringOption(option =>
-            option.setName("number", "index").setDescription("Song number for 'skipto' or 'unplay' action")
+            option.setName("index").setDescription("Song number for 'skipto' or 'unplay' action")
             .setRequired(false)
         ),
 
@@ -129,9 +129,7 @@ module.exports = {
             }
 
             isPlay(guildId);
-            const skippedSong = queue.shift();
-            await saveQueue(guildId, queue); 
-            
+
             if (queue.length === 0) {
                 return interaction.reply({
                     content: `⏭️ Skipped **${skippedSong}**, but queue is now empty!`,

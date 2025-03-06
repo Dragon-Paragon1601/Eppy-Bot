@@ -2,7 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const logger = require("./../../logger");
 const Queue = require("../../schemas/queue");
-const audioBaseDir = path.join(__dirname, "../../../music/audio");
+const audioBaseDir = path.join(__dirname, "../../../audio");
 
 async function clearAudioFolders() {
     if (!fs.existsSync(audioBaseDir)) {

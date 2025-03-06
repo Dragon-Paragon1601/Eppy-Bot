@@ -74,7 +74,7 @@ module.exports = {
         }
     
         await interaction.deferReply();
-        const audioDir = path.join(__dirname, `../../../music/audio/${guildId}`);
+        const audioDir = path.join(__dirname, `../../../audio/${guildId}`);
     
         let firstSongStarted = firstSongStartedMap.get(guildId) || false;
     
@@ -155,7 +155,7 @@ module.exports = {
 async function downloadAndQueue(searchTerm, interaction, voiceChannel, firstSongStarted) {
     return new Promise((resolve) => {
         const guildId = interaction.guild.id;
-        const audioDir = path.join(__dirname, `../../../music/audio/${guildId}`);
+        const audioDir = path.join(__dirname, `../../../audio/${guildId}`);
         const cookiesPath = path.join(__dirname, "../../../cookies.txt");
 
         if (!fs.existsSync(audioDir)) {
