@@ -1,6 +1,8 @@
 const { SlashCommandBuilder } = require("discord.js");
-const { getQueue, playNext, shuffleQueue, saveQueue, isPlay, playersStop,  } = require("../../functions/handlers/handleMusic");
+const { getQueue, playNext, shuffleQueue, saveQueue, isPlay, playersStop, clearQueue } = require("../../functions/handlers/handleMusic");
+const { clearAudioFolders } = require("../../functions/handlers/handleClearAudio");
 const path = require("path");
+const logger = require("./../../logger");
 let players = require("../../functions/handlers/handleMusic").players;
 let connections = require("../../functions/handlers/handleMusic").connections;
 let isPlaying = require("../../functions/handlers/handleMusic").isPlaying;
@@ -8,32 +10,37 @@ let isPlaying = require("../../functions/handlers/handleMusic").isPlaying;
 module.exports = {
     data: new SlashCommandBuilder()
         .setName("queue")
-        .setDescription("Displays the current queue of songs")
-        .addChoices(
-            { name: "queue", value: "queue", description: "Displays the current queue of songs" },
-            { name: "clear", value: "clear", description: "Clears the queue" },
-            { name: "resume", value: "resume", description: "Resumes playing songs from queue" },
-            { name: "shuffle", value: "shuffle", description: "Shuffles the queue" },
-            { name: "skip", value: "skip", description: "Skips the current song" },
-            { name: "skipto", value: "skipto", description: "Skips to specific song in queue", 
-                options: (option) => option.setInteger("index", "Song number")
-                    .setRequired(true) },
-            { name: "stop", value: "stop", description: "Stops the music and disconnects from channel" },
-            { name: "unplay", value: "unplay", description: "Deletes specific song from queue", 
-                options: (option) => option.setInteger("index", "Song number")
-                    .setRequired(true) },
+        .setDescription("Choose an action to perform on the queue.")
+        .addStringOption(option => 
+            option.setName("action")
+                .setDescription("Action to perform on the queue")
+                .setRequired(true)
+                .addChoices(
+                    { name: "queue", value: "queue" },
+                    { name: "clear", value: "clear" },
+                    { name: "resume", value: "resume" },
+                    { name: "shuffle", value: "shuffle" },
+                    { name: "skip", value: "skip" },
+                    { name: "skipto", value: "skipto" },
+                    { name: "stop", value: "stop" },
+                    { name: "unplay", value: "unplay" }
+                )
+        ).addStringOption(option =>
+            option.setName("number", "index").setDescription("Song number for 'skipto' or 'unplay' action")
+            .setRequired(false)
         ),
 
-
     async execute(interaction) {
-        if  (action === "queue" ) {
-            const guildId = interaction.guild.id;
-            const queue = await getQueue(guildId);
+        const action = interaction.options.getString("action");
+        const guildId = interaction.guild.id;
+        const queue = await getQueue(guildId);
+        const amount = interaction.options.getInteger("index") - 2;
+        const voiceChannel = interaction.member.voice.channel;
 
-            
+        if (action === "queue") {
             if (!queue || queue.length === 0) {
                 return interaction.reply({
-                    content: "🎵 Queue is now epmty."
+                    content: "🎵 Queue is now empty."
                 });
             }
 
@@ -55,10 +62,8 @@ module.exports = {
             });
         }
 
-        if ( action === "clear" ) {
+        if (action === "clear") {
             try {
-                const guildId = interaction.guild.id;
-    
                 await clearQueue(guildId); 
                 if (connections[guildId]) {
                     playersStop(guildId);
@@ -67,13 +72,13 @@ module.exports = {
                     connections[guildId]?.destroy();
                     delete connections[guildId];
                 }
-    
+
                 await interaction.reply({
                     content: "🗑️ Queue cleared!"
                 });
-    
+
                 await clearAudioFolders(guildId); 
-    
+
                 await interaction.followUp({
                     content: "🗑️ All audio files cleared!"
                 });
@@ -86,10 +91,7 @@ module.exports = {
             }
         }
 
-        if ( action === "shuffle" ) {
-            const guildId = interaction.guild.id;
-            const queue = await getQueue(guildId);
-
+        if (action === "shuffle") {
             if (!queue || queue.length < 2) {
                 return interaction.reply({
                     content: "🚫 Can't shuffle queue because it's now empty!",
@@ -118,10 +120,7 @@ module.exports = {
             });
         }
 
-        if ( action === "skip" ) {
-            const guildId = interaction.guild.id;
-            let queue = await getQueue(guildId);
-
+        if (action === "skip") {
             if (!queue || queue.length === 0) {
                 return interaction.reply({
                     content: "🚫 Queue is empty!",
@@ -149,11 +148,7 @@ module.exports = {
             await playNext(guildId, interaction);
         }
         
-        if ( action === "skipto ") {
-            const guildId = interaction.guild.id;
-            let queue = await getQueue(guildId); 
-            const amount = interaction.options.getInteger("index") - 2;
-        
+        if (action === "skipto") {
             if (!queue || queue.length === 0) {
                 return interaction.reply({
                     content: "🚫 Queue is empty!",
@@ -179,15 +174,12 @@ module.exports = {
             await playNext(guildId, interaction);
         }
 
-        if ( action === "stop" ) {
+        if (action === "stop") {
             try {
-                const guildId = interaction.guild.id;
-                const voiceChannel = interaction.member.voice.channel;
-    
                 if (!voiceChannel) {
                     return interaction.reply({ content: "❌ You have to be on a voice channel", ephemeral: true });
                 }
-    
+
                 if (connections[guildId]) {
                     playersStop(guildId);
                     isPlaying[guildId] = false;
@@ -195,21 +187,21 @@ module.exports = {
                     connections[guildId].destroy();
                     delete connections[guildId];
                 }
-    
+
                 interaction.reply({ 
                     content: "⏹️ Music stopped and disconnected from channel", 
                     ephemeral: false 
                 });
-        } catch (error) {
-            logger.error(`Error stoping players: ${error}`);
-            await interaction.reply({
-                content: "❌ Something went wrong while stoping bot.",
-                ephemeral: true
-            });
-        }
+            } catch (error) {
+                logger.error(`Error stopping players: ${error}`);
+                await interaction.reply({
+                    content: "❌ Something went wrong while stopping bot.",
+                    ephemeral: true
+                });
+            }
         }
 
-        if ( action === "unplay" ) {
+        if (action === "unplay") {
             const guildId = interaction.guild.id;
             const index = interaction.options.getInteger("index") - 2;
             const queue = await getQueue(guildId);
@@ -246,12 +238,10 @@ module.exports = {
                 content: `🗑️ Deleted **${removedSongName}** from queue`
             });
         }
-        
-        if ( action === "resume" ) {
+
+        if (action === "resume") {
             await interaction.deferReply();
 
-            const guildId = interaction.guild.id;
-            const queue = await getQueue(guildId); 
             if (!queue || queue.length === 0) {
                 return interaction.editReply({
                     content: "🚫 Queue is empty. Use `/play` to add more songs!", 

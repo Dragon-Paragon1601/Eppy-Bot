@@ -3,7 +3,6 @@ const config = require("../../config");
 const logger = require("./../../logger");
 const { setBotPresence } = require("../../functions/handlers/handlePresence");
 const { addPet, setCooldown, isOnCooldown, getTopPetters } = require("../../functions/handlers/handlePet");
-const { client } = require("../../bot");
 
 module.exports = {
     data: new SlashCommandBuilder()
