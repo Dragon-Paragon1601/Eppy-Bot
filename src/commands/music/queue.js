@@ -25,16 +25,16 @@ module.exports = {
                     { name: "stop", value: "stop" },
                     { name: "unplay", value: "unplay" }
                 )
-        ).addStringOption(option =>
-            option.setName("index").setDescription("Song number for 'skipto' or 'unplay' action")
-            .setRequired(false)
+        ).addIntegerOption(option =>
+            option.setName("index")
+                .setDescription("Song number for 'skipto' or 'unplay' action")
+                .setRequired(false)
         ),
 
     async execute(interaction) {
         const action = interaction.options.getString("action");
         const guildId = interaction.guild.id;
         const queue = await getQueue(guildId);
-        const amount = interaction.options.getInteger("index") - 2;
         const voiceChannel = interaction.member.voice.channel;
 
         if (action === "queue") {
@@ -136,8 +136,8 @@ module.exports = {
                 });
             }
 
-            const skippedSongName = path.basename(skippedSong, ".mp3").replace(/_/g, " ");
-            const currentSongName = path.basename(queue[0], ".mp3").replace(/_/g, " ");
+            const skippedSongName = path.basename(queue[0], ".mp3").replace(/_/g, " ");
+            const currentSongName = path.basename(queue[1], ".mp3").replace(/_/g, " ");
             interaction.reply({
                 content: `⏭️ Skipped: \n**${skippedSongName}** \nNow playing: \n**${currentSongName}**`
             });
@@ -147,6 +147,15 @@ module.exports = {
         }
         
         if (action === "skipto") {
+            if (!interaction.options || typeof interaction.options.getInteger !== 'function') {
+                console.error("Invalid interaction options:", interaction.options);
+                return interaction.reply({
+                    content: "?? Invalid interaction options!",
+                    ephemeral: true
+                });
+            }
+            const amountRaw = interaction.options.getInteger("index");
+            const amount = amountRaw -2;
             if (!queue || queue.length === 0) {
                 return interaction.reply({
                     content: "🚫 Queue is empty!",
@@ -166,7 +175,7 @@ module.exports = {
             await saveQueue(guildId, queue); 
         
             interaction.reply({
-                content: `⏭️ Skipped to song number **${amount}**.`
+                content: `⏭️ Skipped to songs: **${amount}**.`
             });
             playersStop(guildId);
             await playNext(guildId, interaction);
@@ -200,10 +209,15 @@ module.exports = {
         }
 
         if (action === "unplay") {
-            const guildId = interaction.guild.id;
-            const index = interaction.options.getInteger("index") - 2;
-            const queue = await getQueue(guildId);
-
+            if (!interaction.options || typeof interaction.options.getInteger !== 'function') {
+                console.error("Invalid interaction options:", interaction.options);
+                return interaction.reply({
+                    content: "?? Invalid interaction options!",
+                    ephemeral: true
+                });
+            }
+            const amountRaw = interaction.options.getInteger("index");
+            const amount = amountRaw - 2;
             if (!queue || queue.length === 0) {
                 return interaction.reply({
                     content: "🚫 Queue is empty!",
@@ -211,21 +225,21 @@ module.exports = {
                 });
             }
 
-            if (index < 0 || index >= queue.length) {
+            if (amount < 0 || amount >= queue.length) {
                 return interaction.reply({
                     content: "🚫 Wrong song number!",
                     ephemeral: true
                 });
             }
 
-            if (index === 0) {
+            if (amount === 0) {
                 return interaction.reply({
                     content: "🚫 You can't delete currently played song!",
                     ephemeral: true
                 });
             }
 
-            const removedSongPath = queue.splice(index, 1)[0];
+            const removedSongPath = queue.splice(amount, 1)[0];
             await saveQueue(guildId, queue); 
 
             const removedSongName = path.basename(removedSongPath)
