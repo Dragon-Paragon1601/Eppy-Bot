@@ -9,7 +9,6 @@ const { connect } = require("mongoose");
 const { Client, Collection, GatewayIntentBits,  } = require("discord.js");
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
 
-
 client.commands = new Collection();
 client.commandArray = [];
 

@@ -39,16 +39,26 @@ async function getUserData(guildId, userId) {
     return user || { lives: 3, currency: 0, lastPlayed: null };
 }
 
+async function handleUserAction(guildId, userId) {
+    let user = await Roulette.findOne({ guildId, userId });
+    if (!user) {
+        user = new Roulette({ guildId, userId, lives: 3, currency: 0, lastPlayed: new Date() });
+    } else {
+        user.lastPlayed = new Date();
+    }
+    await user.save().catch(err => logger.error(`Błąd zapisu user: ${err}`));
+}
+
 // Zresetuj życie użytkowników na nowy dzień
 async function resetLives() {
-    const now = new Date();
-    const resetTime = new Date(now.setHours(0, 0, 0, 0)); // Resetuj godzinę, minutę, sekundę, milisekundę
+    logger.info(`Resetting lives for all users to 3 at midnight`);
+
     try {
-        await Roulette.updateMany(
-            { lastPlayed: { $lt: resetTime } }, 
-            { lives: 3, lastPlayed: now } 
+        const result = await Roulette.updateMany(
+            {}, // No filter, update all users
+            { lives: 3 }
         );
-        logger.info("Lives reset successfully.");
+        logger.info(`Lives reset successfully. Matched: ${result.matchedCount}, Modified: ${result.modifiedCount}`);
     } catch (err) {
         logger.error(`Błąd resetLives: ${err}`);
     }
@@ -68,4 +78,4 @@ async function getTopUsers(guildId) {
     }));
 }
 
-module.exports = { updateLives, addCurrency, hasLives, resetLives, getUserData, getTopUsers };
+module.exports = { updateLives, addCurrency, hasLives, resetLives, getUserData, getTopUsers, handleUserAction };
