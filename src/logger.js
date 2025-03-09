@@ -24,21 +24,21 @@ const logger = winston.createLogger({
             filename: path.join(logDir, 'error-%DATE%.log'),
             datePattern: 'YYYY-MM-DD',
             level: 'error',
-            maxSize: '2m',
+            maxSize: '1m',
             maxFiles: '7d'
         }),
         new DailyRotateFile({
             filename: path.join(logDir, 'info-%DATE%.log'),
             datePattern: 'YYYY-MM-DD',
             level: 'info',
-            maxSize: '2m',
+            maxSize: '1m',
             maxFiles: '7d'
         }),
         new DailyRotateFile({
             filename: path.join(logDir, 'debug-%DATE%.log'),
             datePattern: 'YYYY-MM-DD',
             level: 'debug',
-            maxSize: '2m',
+            maxSize: '1m',
             maxFiles: '7d'
         }),
         new winston.transports.Console({

@@ -9,6 +9,7 @@ module.exports = {
       error_file: path.join(__dirname, "logs/PM2error/error.log"),
       out_file: path.join(__dirname, "logs/PM2output/output.log"),
       pid_file: path.join(__dirname, "logs/app/app.pid"),
+      cron_restart: '0 5 */2 * *',
       merge_logs: true,
       watch: false,  
       max_memory_restart: "16000M",
