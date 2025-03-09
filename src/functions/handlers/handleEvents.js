@@ -47,5 +47,7 @@ module.exports = (client) => {
           break;
       }
     }
+    
+    require('../../events/client/resetLives');
   };
 };
