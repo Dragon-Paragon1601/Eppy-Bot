@@ -1,16 +1,15 @@
 const winston = require("winston");
 const path = require("path");
 const fs = require("fs");
+const DailyRotateFile = require('winston-daily-rotate-file');
 
 const logDir = "logs";
-
 
 [logDir].forEach((dir) => {
     if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
     }
 });
-
 
 const logger = winston.createLogger({
     level: "debug",
@@ -21,9 +20,27 @@ const logger = winston.createLogger({
         })
     ),
     transports: [
-        new winston.transports.File({ filename: path.join(logDir, "error.log"), level: "error" }),
-        new winston.transports.File({ filename: path.join(logDir, "info.log"), level: "info" }),
-        new winston.transports.File({ filename: path.join(logDir, "debug.log"), level: "debug" }),
+        new DailyRotateFile({
+            filename: path.join(logDir, 'error-%DATE%.log'),
+            datePattern: 'YYYY-MM-DD',
+            level: 'error',
+            maxSize: '2m',
+            maxFiles: '7d'
+        }),
+        new DailyRotateFile({
+            filename: path.join(logDir, 'info-%DATE%.log'),
+            datePattern: 'YYYY-MM-DD',
+            level: 'info',
+            maxSize: '2m',
+            maxFiles: '7d'
+        }),
+        new DailyRotateFile({
+            filename: path.join(logDir, 'debug-%DATE%.log'),
+            datePattern: 'YYYY-MM-DD',
+            level: 'debug',
+            maxSize: '2m',
+            maxFiles: '7d'
+        }),
         new winston.transports.Console({
             format: winston.format.combine(
                 winston.format.colorize(),
