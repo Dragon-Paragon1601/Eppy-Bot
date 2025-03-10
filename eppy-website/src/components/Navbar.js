@@ -8,7 +8,8 @@ export default function Navbar() {
 
   return (
     <nav className="flex justify-between items-center p-5 bg-zinc-950 text-cyan-400 shadow-lg">
-      <div className="flex items-center justify-start gap-[30px] translate-x-[250px]">
+      <div className="flex-grow"></div>
+      <div className="flex items-center gap-8 ml-[-20%]">
         <div className="text-3xl font-bold">Eppy</div>
         <Button className="text-2xl bg-zinc-900" variant="ghost" asChild>
           <Link href="/">Home</Link>
@@ -20,17 +21,17 @@ export default function Navbar() {
           <Link href="/dashboard">Dashboard</Link>
         </Button>
       </div>
-      <div className="flex items-center justify-start gap-[50px] translate-x-[-200px]">
+      <div className="flex-grow mx-2"></div>
+      <div className="flex items-center gap-8 mr-[10%]">
         {session ? (
-          // Jeśli użytkownik jest zalogowany, pokazujemy jego nazwę i przycisk wylogowania
           <>
-            <span className="text-xl text-white font-bold">{session.user.name}</span>
+            <div className="text-[25px] text-white font-bold">Welcome</div>
+            <span className="text-[25px] text-white font-bold">{session.user.name}</span>
             <Button className="text-2xl bg-zinc-900" variant="outline" onClick={() => signOut()}>
-            Logout
+              Logout
             </Button>
           </>
         ) : (
-          // Jeśli użytkownik nie jest zalogowany, pokazujemy przycisk logowania
           <Button className="text-2xl bg-zinc-900" variant="outline" onClick={() => signIn("discord")}>
             Login with Discord
           </Button>
