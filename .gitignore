@@ -6,6 +6,7 @@ cookies.txt
 .gitignore
 Done.txt
 /music/
+audio/
 logs/
 .env
 
