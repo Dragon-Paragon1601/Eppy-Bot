@@ -3,6 +3,7 @@ send_commit_gui.ps1
 send_commit.bat
 node_modules/
 cookies.txt
+.gitignore
 Done.txt
 /music/
 logs/
