@@ -8,12 +8,17 @@ async function updateLives(guildId, userId, amount) {
     let user = await Roulette.findOne({ guildId, userId });
     if (user) {
         user.lives += amount;
+        if (amount === -1) {
+            user.remainingBullets = 6;
+            user.roundsPlayed = 0;
+        }
         await user.save().catch(err => logger.error(`Błąd zapisu user: ${err}`));
     } else {
-        user = new Roulette({ guildId, userId, lives: 3, currency: 0, lastPlayed: null });
+        user = new Roulette({ guildId, userId, lives: 3, currency: 0, lastPlayed: null, remainingBullets: 6, roundsPlayed: 0 });
         await user.save().catch(err => logger.error(`Błąd zapisu user: ${err}`));
     }
 }
+
 
 // Dodaj walutę użytkownikowi
 async function addCurrency(guildId, userId, amount) {
@@ -22,22 +27,57 @@ async function addCurrency(guildId, userId, amount) {
         user.currency += amount;
         await user.save().catch(err => logger.error(`Błąd zapisu user: ${err}`));
     } else {
-        user = new Roulette({ guildId, userId, currency: amount, lives: 3, lastPlayed: null });
+        user = new Roulette({ guildId, userId, currency: amount, lives: 3, lastPlayed: null, remainingBullets: 6, roundsPlayed: 0 });
         await user.save().catch(err => logger.error(`Błąd zapisu user: ${err}`));
     }
 }
 
+
 // Sprawdź czy użytkownik ma życie
 async function hasLives(guildId, userId) {
-    const user = await Roulette.findOne({ guildId, userId }).lean();
-    return user ? user.lives > 0 : false;
+    const user = await Roulette.findOne({ guildId, userId });
+    if (user) {
+        return user.lives > 0;
+    } else {
+        const newUser = new Roulette({ guildId, userId, lives: 3, currency: 0, lastPlayed: null, remainingBullets: 6, roundsPlayed: 0 });
+        await newUser.save().catch(err => logger.error(`Błąd zapisu user: ${err}`));
+        return true; 
+    }
 }
+
 
 // Pobierz ilość żyć i waluty użytkownika
 async function getUserData(guildId, userId) {
-    const user = await Roulette.findOne({ guildId, userId }).lean();
-    return user || { lives: 3, currency: 0, lastPlayed: null };
+    const user = await Roulette.findOne({ guildId, userId });
+    if (user) {
+        return { 
+            lives: user.lives, 
+            currency: user.currency, 
+            lastPlayed: user.lastPlayed,
+            roundsPlayed: user.roundsPlayed,  // Dodanie liczby rozegranych rund
+            remainingBullets: user.remainingBullets  // Dodanie liczby pozostałych pocisków
+        };
+    } else {
+        const newUser = new Roulette({ 
+            guildId, 
+            userId, 
+            lives: 3, 
+            currency: 0, 
+            lastPlayed: null,
+            roundsPlayed: 0,  
+            remainingBullets: 6 
+        });
+        await newUser.save().catch(err => logger.error(`Błąd zapisu user: ${err}`));
+        return { 
+            lives: 3, 
+            currency: 0, 
+            lastPlayed: null,
+            roundsPlayed: 0, 
+            remainingBullets: 6 
+        };
+    }
 }
+
 
 async function handleUserAction(guildId, userId) {
     let user = await Roulette.findOne({ guildId, userId });
@@ -55,8 +95,12 @@ async function resetLives() {
 
     try {
         const result = await Roulette.updateMany(
-            {}, // No filter, update all users
-            { lives: 3 }
+            {},
+            { 
+                lives: 3,
+                remainingBullets: 6,  
+                roundsPlayed: 0      
+            }
         );
         logger.info(`Lives reset successfully. Matched: ${result.matchedCount}, Modified: ${result.modifiedCount}`);
     } catch (err) {
@@ -64,18 +108,46 @@ async function resetLives() {
     }
 }
 
+
 // Pobierz ranking użytkowników na serwerze
 async function getTopUsers(guildId) {
     const topUsers = await Roulette.find({ guildId })
         .sort({ currency: -1 })
-        .limit(10)
-        .lean();
+        .limit(10);
 
     return topUsers.map(user => ({
         userId: user.userId,
         lives: user.lives,
         currency: user.currency,
+        roundsPlayed: user.roundsPlayed,  
+        remainingBullets: user.remainingBullets 
     }));
 }
 
-module.exports = { updateLives, addCurrency, hasLives, resetLives, getUserData, getTopUsers, handleUserAction };
+async function updateGameState(guildId, userId, roundsPlayed, remainingBullets) {
+    try {
+        const user = await Roulette.findOne({ guildId, userId });
+
+        if (user) {
+            user.roundsPlayed = roundsPlayed;
+            user.remainingBullets = remainingBullets;
+            await user.save().catch(err => logger.error(`Błąd zapisu user: ${err}`));
+        } else {
+            const newUser = new Roulette({
+                guildId,
+                userId,
+                roundsPlayed,
+                remainingBullets,
+                lives: 3, 
+                currency: 0,
+                lastPlayed: null,
+            });
+            await newUser.save().catch(err => logger.error(`Błąd zapisu user: ${err}`));
+        }
+    } catch (err) {
+        logger.error(`Błąd w funkcji updateGameState: ${err}`);
+    }
+}
+
+
+module.exports = { updateLives, addCurrency, hasLives, resetLives, getUserData, getTopUsers, handleUserAction, updateGameState };
