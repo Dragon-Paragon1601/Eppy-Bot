@@ -54,8 +54,8 @@ async function getUserData(guildId, userId) {
             lives: user.lives, 
             currency: user.currency, 
             lastPlayed: user.lastPlayed,
-            roundsPlayed: user.roundsPlayed,  // Dodanie liczby rozegranych rund
-            remainingBullets: user.remainingBullets  // Dodanie liczby pozostałych pocisków
+            roundsPlayed: user.roundsPlayed, 
+            remainingBullets: user.remainingBullets  
         };
     } else {
         const newUser = new Roulette({ 

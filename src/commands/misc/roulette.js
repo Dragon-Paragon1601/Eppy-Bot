@@ -38,7 +38,6 @@ module.exports = {
             });
         }
 
-        // Sprawdzenie, czy użytkownik ma życie
         const isAllowedUser = config.allowUsers.includes(userId);
         if (!isAllowedUser) {
             const hasLivesLeft = await hasLives(guildId, userId);
@@ -50,11 +49,10 @@ module.exports = {
             }
         }
 
-        let { roundsPlayed, remainingBullets } = await getUserData(guildId, userId); // Pobieramy stan gry z bazy danych
+        let { roundsPlayed, remainingBullets } = await getUserData(guildId, userId); 
         let result;
         let coinsWon = 0;
 
-        // Tablica wyników, zaczynamy z 5 wygranymi i 1 przegraną
         let outcomes = ["💥 You lost!", "🎉 You won!", "🎉 You won!", "🎉 You won!", "🎉 You won!", "🎉 You won!"];
 
         if (action === "quit") {
@@ -62,10 +60,9 @@ module.exports = {
             ammount = coinsWon;
             await addCurrency(guildId, userId, ammount);
 
-            // Resetowanie gry
             remainingBullets = 6;
             roundsPlayed = 0;
-            await updateGameState(guildId, userId, roundsPlayed, remainingBullets); // Zapiszemy zaktualizowany stan gry w bazie danych
+            await updateGameState(guildId, userId, roundsPlayed, remainingBullets); 
             return interaction.reply({
                 content: `Game reset. You quit the game. You earned **${coinsWon}** 🪙 coins. Starting a new game...`,
                 ephemeral: true,
@@ -74,16 +71,15 @@ module.exports = {
 
         if (action === "shoot") {
             if (remainingBullets > 0) {
-                // Losowanie wyniku
                 result = outcomes[Math.floor(Math.random() * outcomes.length)];
                 roundsPlayed++;
-                remainingBullets--; // Zmniejszamy liczbę nabojów
+                remainingBullets--; 
 
                 if (result === "🎉 You won!") {
-                    // Usuwamy pierwsze wystąpienie "🎉 You won!" z tablicy wyników
+
                     const index = outcomes.indexOf("🎉 You won!");
                     if (index !== -1) {
-                        outcomes.splice(index, 1); // Usuwamy tylko jedno "🎉 You won!"
+                        outcomes.splice(index, 1);
                     }
                     result = `🎉 You won! \nThere are **${remainingBullets}** bullets left.`;
                 } else {
@@ -93,11 +89,10 @@ module.exports = {
                         result = "💥 You lost! Game over!";
                     } else {
                         result = "💥 You lost! Game over! You have no lives left.";
-                        // Resetowanie gry po przegranej
                         remainingBullets = 6;
                         roundsPlayed = 0;
         
-                        await updateGameState(guildId, userId, roundsPlayed, remainingBullets); // Zapiszemy zaktualizowany stan gry
+                        await updateGameState(guildId, userId, roundsPlayed, remainingBullets); 
                     }
                 }
             } else {
@@ -105,7 +100,6 @@ module.exports = {
             }
 
             if (roundsPlayed >= 6) {
-                // Po 6 rundach, zawsze przegrana i reset gry
                 result = "🎉 You won the whole bid! (Always lost after 6 rounds)";
                 coinsWon = calculateCoins(roundsPlayed);
                 ammount = coinsWon;
@@ -115,7 +109,7 @@ module.exports = {
                 roundsPlayed = 0;
             }
 
-            await updateGameState(guildId, userId, roundsPlayed, remainingBullets); // Zapiszemy zaktualizowany stan gry w bazie danych
+            await updateGameState(guildId, userId, roundsPlayed, remainingBullets);
         } else if (action === "roll") {
             result = `🔄 You rolled the cylinder. \nThe game continues. \nThere are **${remainingBullets}** bullets left.`;
         }
