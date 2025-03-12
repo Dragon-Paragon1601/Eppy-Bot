@@ -9,4 +9,8 @@ module.exports = {
   spotify_secret: process.env.spotify_secret,
   allowUsers: process.env.allowlist,
   SESSION_SECRET: process.env.SESSION_SECRET,
+  DB_HOST: process.env.DB_HOST,
+  DB_USER: process.env.DB_USER,
+  DB_PASS: process.env.DB_PASSWORD,
+  DB_NAME: process.env.DB_NAME,
 };

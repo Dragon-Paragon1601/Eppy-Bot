@@ -42,7 +42,23 @@ module.exports = (client) => {
               );
           }
           break;
-
+        
+        case "mysql":
+          for (const file of eventFiles) {
+            const event = require(`../../events/${folder}/${file}`);
+            // Jeśli wydarzenie MySQL ma być wykonane tylko raz
+            if (event.once)
+              connection.once(event.name, (...args) =>
+                event.execute(...args, client)
+              );
+            // Jeśli wydarzenie MySQL ma być wykonane wielokrotnie
+            else
+              connection.on(event.name, (...args) =>
+                event.execute(...args, client)
+              );
+          }
+          break;
+        
         default:
           break;
       }

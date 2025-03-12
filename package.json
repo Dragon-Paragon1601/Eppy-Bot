@@ -21,7 +21,7 @@
     "chalk": "^4.1.2",
     "discord-api-types": "^0.37.67",
     "discord-rpc": "^4.0.1",
-    "discord.js": "^14.17.3",
+    "discord.js": "^14.18.0",
     "dotenv": "^16.4.7",
     "eppy-bot": "file:",
     "express": "^4.21.2",

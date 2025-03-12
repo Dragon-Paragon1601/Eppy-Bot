@@ -5,6 +5,7 @@ const io = require('@pm2/io');
 const logger = require("./logger");
 const config = require("./config");
 const pidusage = require("pidusage");
+const pool = require("./events/mysql/connect");
 const { connect } = require("mongoose");
 const { Client, Collection, GatewayIntentBits,  } = require("discord.js");
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
@@ -67,6 +68,7 @@ client.login(config.token);
 
 logUsage();
 setInterval(monitorUsage, 3000);
+
 (async () => {
   await connect(config.databaseToken, {
     useNewUrlParser: true,
