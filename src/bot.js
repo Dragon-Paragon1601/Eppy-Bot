@@ -8,7 +8,15 @@ const pidusage = require("pidusage");
 const pool = require("./events/mysql/connect");
 const { connect } = require("mongoose");
 const { Client, Collection, GatewayIntentBits,  } = require("discord.js");
-const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds, // Daje dostęp do podstawowych informacji o serwerze
+    GatewayIntentBits.GuildMembers, // Daje dostęp do członków serwera
+    GatewayIntentBits.GuildMessages, // Daje dostęp do wiadomości na serwerze
+    GatewayIntentBits.MessageContent, // Daje dostęp do treści wiadomości
+    GatewayIntentBits.GuildVoiceStates // Daje dostęp do informacji o głosowych kanałach
+  ]
+});
 
 client.commands = new Collection();
 client.commandArray = [];
