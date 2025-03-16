@@ -4,6 +4,9 @@ const { clearAudioFolders } = require("./handleClearAudio");
 const logger = require("./../../logger");
 const mm = require('music-metadata');
 const fs = require("fs");
+const config = require("../../config")
+const mysql = require('mysql2/promise');
+const pool = require("../../events/mysql/connect")
 const Queue = require("../../schemas/queue");
 const QueueChannel = require("../../schemas/queueChannel");
 const firstSongStartedMap = new Map();
@@ -216,9 +219,28 @@ async function playNext(guildId, interaction) {
 
 // Pobierz kanał kolejki dla danej gildii
 async function getQueueChannel(guildId) {
-    const queueChannel = await QueueChannel.findOne({ guildId });
-    return queueChannel ? queueChannel.channelId : null;
+    const query = 'SELECT * FROM queue_channels WHERE guild_id = ?';
+    try {
+        // Tworzenie połączenia z bazą (lub użycie istniejącego)
+        const connection = await mysql.createConnection({ 
+            host: config.DB_HOST,
+            user: config.DB_USER,
+            password: config.DB_PASS,
+            database: config.DB_NAME,
+        });
+        
+        const [results] = await connection.execute(query, [guildId]);
+        if (results.length > 0) {
+            return results[0].queue_channel_id;
+        } else {
+            return null;
+        }
+    } catch (err) {
+        console.error('Błąd zapytania:', err);
+        throw err;
+    }
 }
+
 
 // Rozpocznij odtwarzanie muzyki
 function startPlaying(interaction) {

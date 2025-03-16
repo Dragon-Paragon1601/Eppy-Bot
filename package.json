@@ -34,6 +34,7 @@
     "mongodb": "^6.13.1",
     "mongoose": "^8.0.4",
     "music-metadata": "^10.9.0",
+    "mysql": "^2.18.1",
     "mysql2": "^3.13.0",
     "node-cron": "^3.0.3",
     "passport": "^0.7.0",

@@ -207,8 +207,8 @@ async function downloadAndQueue(searchTerm, interaction, voiceChannel, firstSong
                     });
 
                     await saveQueue(guildId, queue);
-
-                    const queueChannelId = await getQueueChannel(guildId);
+                    const queueChannelId = await getQueueChannel(guildId)
+                    logger.debug(`${queueChannelId}`)
                     const textChannel = interaction.guild.channels.cache.get(queueChannelId) || interaction.channel;
                     if (textChannel && addedSongs.length > 0) {
                         const formattedSongs = addedSongs.map(song =>

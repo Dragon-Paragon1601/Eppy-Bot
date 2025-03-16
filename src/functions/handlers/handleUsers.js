@@ -7,15 +7,13 @@ async function saveAllGuildUsers(guild) {
     return;
   }
 
-  logger.debug(`[LOG] Pobieranie użytkowników dla serwera: ${guild.name} (${guild.id})`);
-
   try {
-    const members = await guild.members.fetch();
-    logger.debug(`[LOG] Znaleziono ${members.size} użytkowników`);
+    const members = await guild.members.fetch(); // Pobieramy wszystkich członków
 
     for (const member of members.values()) {
       let adminPrem = 0;
 
+      // Określenie uprawnień użytkownika
       if (member.permissions.has("Administrator")) {
         adminPrem = 8;
       } else if (member.permissions.has("ManageGuild")) {
@@ -24,18 +22,18 @@ async function saveAllGuildUsers(guild) {
         adminPrem = 4;
       }
 
-      logger.debug(`[LOG] ${member.user.tag} - admin_prem: ${adminPrem}`);
-
+      // Sprawdzamy, czy użytkownik już istnieje w bazie danych
       const existingUser = await User.findOne({ guild_id: guild.id, user_id: member.id });
 
       if (existingUser) {
+        // Jeśli użytkownik istnieje, zaktualizuj dane
         existingUser.admin_prem = adminPrem;
         existingUser.username = member.user.username;
         existingUser.guild_name = guild.name; // Aktualizujemy nazwę serwera
         existingUser.guild_icon = guild.iconURL() || null; // Aktualizujemy ikonę serwera
         await existingUser.save();
-        logger.debug(`[LOG] Zaktualizowano użytkownika: ${member.user.tag}`);
       } else {
+        // Jeśli użytkownik nie istnieje, dodaj nowego użytkownika
         const newUser = new User({
           guild_id: guild.id,
           user_id: member.id,
@@ -45,7 +43,6 @@ async function saveAllGuildUsers(guild) {
           guild_icon: guild.iconURL() || null, // Dodajemy ikonę serwera
         });
         await newUser.save();
-        logger.debug(`[LOG] Dodano nowego użytkownika: ${member.user.tag}`);
       }
     }
   } catch (error) {

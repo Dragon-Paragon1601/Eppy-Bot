@@ -3,8 +3,11 @@ const logger = require("../../logger");
 
 module.exports = {
   name: "guildAvailable",
-  async execute(guild) {  // 🔧 Poprawione! Odbieramy guild, nie member
-    logger.debug(`Dodawanie użytkowników dla serwera: ${guild.name} (${guild.id})`);
-    await saveAllGuildUsers(guild);
+  async execute(guild) {
+    try {
+      await saveAllGuildUsers(guild);
+    } catch (error) {
+      logger.error(`Błąd podczas zapisu użytkowników dla serwera ${guild.name}: ${error}`);
+    }
   },
 };
