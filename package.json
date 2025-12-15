@@ -4,14 +4,14 @@
   "description": "",
   "main": "src/bot.js",
   "scripts": {
-    "test": "node ."
+    "test": "node .",
+    "start": "node --no-deprecation src/bot.js"
   },
-  "start": "node --no-deprecation bot.js",
   "keywords": [],
   "author": "Paragon",
   "license": "ISC",
   "dependencies": {
-    "@discordjs/opus": "^0.10.0",
+    "opusscript": "^0.0.8",
     "@discordjs/rest": "^2.2.0",
     "@discordjs/voice": "^0.18.0",
     "@distube/yt-dlp": "^2.0.1",
