@@ -21,7 +21,7 @@ module.exports = {
         await interaction.reply("🔄 Restarting bot...");
         
         setTimeout(() => {
-            exec("pm2 restart Eppy", (error, stdout, stderr) => {
+            exec("pm2 restart Eppy-Bot", (error, stdout, stderr) => {
                 if (error) {
                     logger.error(`❌ Błąd restartu: ${error.message}`);
                     return;
