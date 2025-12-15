@@ -1,0 +1,12 @@
+token=(Discord bot token)
+databaseToken=(MongoDB secret (will be updated for local database))
+client_Secret=(idk)
+guild_ID=(discord server ID (in my case my testing server))
+spotify_client_ID=(not needed anymore)
+spotify_secret=(not needed anymore)
+allowlist=(users with priviliges)
+SESSION_SECRET=
+DB_HOST=(mysql database ip)
+DB_USER=(mysql database login/name)
+DB_PASSWORD=(mysql database password)
+DB_NAME=(mysql database name)

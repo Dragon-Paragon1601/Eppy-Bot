@@ -33,7 +33,7 @@ module.exports = {
     let time = interaction.options.getInteger("time");
     const member = await interaction.guild.members
       .fetch(user.id)
-      .catch(err => logger.error(`interaction guild member:  ${err}`));
+      .catch((err) => logger.error(`interaction guild member:  ${err}`));
     if (!reason) reason = "No reason provided.";
     if (!time) time = 0;
     if (
@@ -55,9 +55,12 @@ module.exports = {
         deleteMessageDays: 0 <= time <= 7,
         reason: reason,
       })
-      .catch(err => logger.error(`Usuwanie wiadomości bat: ${err}`), () => {
-        return interaction.reply({ content: "I cannot ban this member!" });
-      });
+      .catch(
+        (err) => logger.error(`Usuwanie wiadomości bat: ${err}`),
+        () => {
+          return interaction.reply({ content: "I cannot ban this member!" });
+        }
+      );
 
     await interaction.reply({
       content: `=========================\n${user.tag} got banned\nBy: ${interaction.member}\nFor reason: ${reason}\n=========================`,

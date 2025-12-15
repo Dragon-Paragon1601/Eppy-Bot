@@ -76,7 +76,7 @@ client.once("ready", async () => {
 client.login(config.token);
 
 logUsage();
-setInterval(monitorUsage, 3000);
+setInterval(monitorUsage, 18000);
 
 (async () => {
   await connect(config.databaseToken, {
