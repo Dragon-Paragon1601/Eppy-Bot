@@ -12,6 +12,7 @@ const {
   clearAudioFolders,
 } = require("../../functions/handlers/handleClearAudio");
 const path = require("path");
+const fs = require("fs");
 const logger = require("../../logger");
 let players = require("../../functions/handlers/handleMusic").players;
 let connections = require("../../functions/handlers/handleMusic").connections;
@@ -27,15 +28,23 @@ module.exports = {
         .setDescription("Choose action to perform on the queue")
         .setRequired(true)
         .addChoices(
+          { name: "play", value: "play" },
           { name: "queue", value: "queue" },
           { name: "clear", value: "clear" },
           { name: "resume", value: "resume" },
-          { name: "shuffle", value: "shuffle" },
           { name: "skip", value: "skip" },
+          { name: "shuffle", value: "shuffle" },
           { name: "skipto", value: "skipto" },
           { name: "stop", value: "stop" },
           { name: "unplay", value: "unplay" }
         )
+    )
+    .addStringOption((option) =>
+      option
+        .setName("track")
+        .setDescription("Track name (autocomplete)")
+        .setRequired(false)
+        .setAutocomplete(true)
     )
     .addIntegerOption((option) =>
       option
@@ -43,6 +52,26 @@ module.exports = {
         .setDescription("Song number for 'skipto' or 'unplay' action")
         .setRequired(false)
     ),
+
+  async autocomplete(interaction) {
+    try {
+      const focused = interaction.options.getFocused();
+      const musicDir = path.join(__dirname, "music");
+      if (!fs.existsSync(musicDir)) return interaction.respond([]);
+      const files = fs
+        .readdirSync(musicDir)
+        .filter((f) => f.toLowerCase().endsWith(".mp3"));
+      const choices = files.map((f) => f.replace(/\.mp3$/i, ""));
+      const filtered = choices
+        .filter((c) => c.toLowerCase().includes((focused || "").toLowerCase()))
+        .slice(0, 25);
+      await interaction.respond(
+        filtered.map((name) => ({ name, value: name }))
+      );
+    } catch (err) {
+      logger.error(`queue autocomplete error: ${err}`);
+    }
+  },
 
   async execute(interaction) {
     const action = interaction.options.getString("action");
@@ -78,6 +107,86 @@ module.exports = {
       return interaction.reply({
         content: queueMessage,
       });
+    }
+
+    if (action === "play") {
+      try {
+        const trackName = interaction.options.getString("track");
+        logger.debug(
+          `Queue play requested: guild=${guildId}, track=${trackName}`
+        );
+        if (!trackName)
+          return interaction.reply({
+            content: "❌ No track specified",
+            ephemeral: true,
+          });
+        const musicDir = path.join(__dirname, "music");
+        if (!fs.existsSync(musicDir))
+          return interaction.reply({
+            content: "❌ No music folder found.",
+            ephemeral: true,
+          });
+        const candidate = trackName.endsWith(".mp3")
+          ? trackName
+          : `${trackName}.mp3`;
+        const filePath = path.join(musicDir, candidate);
+        if (!fs.existsSync(filePath))
+          return interaction.reply({
+            content: `❌ Track not found: ${candidate}`,
+            ephemeral: true,
+          });
+
+        if (isPlay(guildId)) {
+          await addToQueue(guildId, filePath);
+          const songName = path.basename(filePath, ".mp3").replace(/_/g, " ");
+          // send notification to configured channel
+          const notifyMsg = `▶️ Added to queue: **${songName}**`;
+          try {
+            await require("../../functions/handlers/handleMusic").sendNotification(
+              guildId,
+              interaction,
+              notifyMsg
+            );
+          } catch (e) {
+            logger.error(`Failed sending add-to-queue notification: ${e}`);
+          }
+          logger.info(`Added to queue: ${songName} (guild=${guildId})`);
+          return interaction.reply({
+            content: `▶️ Added to queue: **${songName}**`,
+            ephemeral: true,
+          });
+        } else {
+          await saveQueue(guildId, [filePath]);
+          await playNext(guildId, interaction);
+          logger.info(
+            `Now playing: ${path
+              .basename(filePath, ".mp3")
+              .replace(/_/g, " ")} (guild=${guildId})`
+          );
+          return interaction.reply({
+            content: `🎶 Now playing: **${path
+              .basename(filePath, ".mp3")
+              .replace(/_/g, " ")}**`,
+          });
+        }
+      } catch (err) {
+        logger.error(`Error in /queue play: ${err}`);
+        try {
+          if (interaction.deferred || interaction.replied) {
+            return interaction.editReply({
+              content: `❌ Something went wrong: ${err.message}`,
+              ephemeral: true,
+            });
+          } else {
+            return interaction.reply({
+              content: `❌ Something went wrong: ${err.message}`,
+              ephemeral: true,
+            });
+          }
+        } catch (e) {
+          logger.error(`Failed to notify user about /queue play error: ${e}`);
+        }
+      }
     }
 
     if (action === "clear") {
@@ -169,8 +278,19 @@ module.exports = {
       const currentSongName = path
         .basename(queue[1], ".mp3")
         .replace(/_/g, " ");
-      interaction.reply({
-        content: `⏭️ Skipped: \n**${skippedSongName}** \nNow playing: \n**${currentSongName}**`,
+      const skipMsg = `⏭️ Skipped: \n**${skippedSongName}** \nNow playing: \n**${currentSongName}**`;
+      try {
+        await require("../../functions/handlers/handleMusic").sendNotification(
+          guildId,
+          interaction,
+          skipMsg
+        );
+      } catch (e) {
+        logger.error(`Failed sending skip notification: ${e}`);
+      }
+      await interaction.reply({
+        content: "⏭️ Skipped to next track.",
+        ephemeral: true,
       });
 
       playersStop(guildId);

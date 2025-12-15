@@ -162,6 +162,7 @@ async function queueEmpty(guildId, interaction) {
       logger.debug(
         `🔁 Looping queue for gildii ${guildId}. Refilled ${source.length} tracks.`
       );
+      playNext(guildId, interaction);
       return;
     }
     if (interaction.channel) {
@@ -275,45 +276,74 @@ async function playNext(guildId, interaction) {
   connections[guildId].subscribe(players[guildId]);
   players[guildId].play(resource);
   const songName = path.basename(songPath, ".mp3").replace(/_/g, " ");
-  interaction.channel
-    .send(`🎶 Now playing: **${songName}**`)
-    .then(async (sentMessage) => {
-      const totalTime = await getSongDuration(songPath);
-      if (!idleTimers[guildId]) idleTimers[guildId] = {};
+  const sentMessage = await sendNotification(
+    guildId,
+    interaction,
+    `🎶 Now playing: **${songName}**`
+  );
+  if (!idleTimers[guildId]) idleTimers[guildId] = {};
 
-      if (idleTimers[guildId]?.progressInterval) {
-        clearInterval(idleTimers[guildId].progressInterval);
-      }
+  if (idleTimers[guildId]?.progressInterval) {
+    clearInterval(idleTimers[guildId].progressInterval);
+  }
 
-      idleTimers[guildId].progressInterval = setInterval(() => {
-        if (players[guildId].state.status === AudioPlayerStatus.Playing) {
-          const currentTime = players[guildId].state.resource.playbackDuration;
+  if (sentMessage && typeof sentMessage.edit === "function") {
+    const totalTime = await getSongDuration(songPath);
+
+    idleTimers[guildId].progressInterval = setInterval(() => {
+      if (players[guildId].state.status === AudioPlayerStatus.Playing) {
+        const currentTime = players[guildId].state.resource.playbackDuration;
+        try {
           sentMessage.edit(
             `🎶 **${songName}**\n${formatTime(currentTime)}/${formatTime(
               totalTime
             )} [${createProgressBar(currentTime, totalTime)}]`
           );
+        } catch (e) {
+          logger.error(`Failed editing progress message: ${e}`);
         }
-      }, 1000);
+      }
+    }, 1000);
 
-      players[guildId].once(AudioPlayerStatus.Idle, async () => {
-        clearInterval(idleTimers[guildId].progressInterval);
+    players[guildId].once(AudioPlayerStatus.Idle, async () => {
+      clearInterval(idleTimers[guildId].progressInterval);
+      try {
         sentMessage.edit(`🎶 Finished playing: **${songName}**`);
-        isPlaying[guildId] = false;
-        firstSongStartedMap.set(guildId, false);
-        queue = await getQueue(guildId);
-        const loopSong = loopSongMap.get(guildId);
-        if (!loopSong || loopSong !== songPath) {
-          if (queue.length > 0) {
-            queue.shift();
-            await saveQueue(guildId, queue);
-          }
-        } else {
-          // For a looped song we don't shift the queue so it stays as the first item and will play again
+      } catch (e) {
+        logger.error(`Failed editing finished message: ${e}`);
+      }
+      isPlaying[guildId] = false;
+      firstSongStartedMap.set(guildId, false);
+      queue = await getQueue(guildId);
+      const loopSong = loopSongMap.get(guildId);
+      if (!loopSong || loopSong !== songPath) {
+        if (queue.length > 0) {
+          queue.shift();
+          await saveQueue(guildId, queue);
         }
-        playNext(guildId, interaction);
-      });
+      } else {
+        // For a looped song we don't shift the queue so it stays as the first item and will play again
+      }
+      playNext(guildId, interaction);
     });
+  } else {
+    // No editable message available; fall back to minimal idle handling
+    players[guildId].once(AudioPlayerStatus.Idle, async () => {
+      if (idleTimers[guildId]?.progressInterval)
+        clearInterval(idleTimers[guildId].progressInterval);
+      isPlaying[guildId] = false;
+      firstSongStartedMap.set(guildId, false);
+      queue = await getQueue(guildId);
+      const loopSong = loopSongMap.get(guildId);
+      if (!loopSong || loopSong !== songPath) {
+        if (queue.length > 0) {
+          queue.shift();
+          await saveQueue(guildId, queue);
+        }
+      }
+      playNext(guildId, interaction);
+    });
+  }
 
   if (idleTimers[guildId]) clearTimeout(idleTimers[guildId]);
 }
@@ -340,6 +370,64 @@ async function getQueueChannel(guildId) {
     console.error("Błąd zapytania:", err);
     throw err;
   }
+}
+
+// Notification channel (Mongo-backed)
+async function setNotificationChannel(guildId, channelId) {
+  try {
+    let doc = await QueueChannel.findOne({ guildId });
+    if (!doc) {
+      doc = new QueueChannel({ guildId, channelId });
+    } else {
+      doc.channelId = channelId;
+    }
+    await doc.save();
+  } catch (err) {
+    logger.error(`Error setting notification channel for ${guildId}: ${err}`);
+  }
+}
+
+async function clearNotificationChannel(guildId) {
+  try {
+    await QueueChannel.deleteOne({ guildId });
+  } catch (err) {
+    logger.error(`Error clearing notification channel for ${guildId}: ${err}`);
+  }
+}
+
+async function getNotificationChannel(guildId) {
+  try {
+    const doc = await QueueChannel.findOne({ guildId });
+    return doc ? doc.channelId : null;
+  } catch (err) {
+    logger.error(`Error fetching notification channel for ${guildId}: ${err}`);
+    return null;
+  }
+}
+
+// Send notification to configured channel if present, otherwise fall back to interaction.channel
+async function sendNotification(guildId, interaction, content, options = {}) {
+  try {
+    const channelId = await getNotificationChannel(guildId);
+    if (channelId) {
+      try {
+        const ch = await interaction.guild.channels.fetch(channelId);
+        if (ch && ch.send) {
+          return ch.send({ content, ...options });
+        }
+      } catch (e) {
+        logger.error(`Failed to send to configured channel ${channelId}: ${e}`);
+      }
+    }
+
+    // fallback to the channel where command was issued
+    if (interaction.channel && interaction.channel.send) {
+      return interaction.channel.send({ content, ...options });
+    }
+  } catch (err) {
+    logger.error(`sendNotification error for ${guildId}: ${err}`);
+  }
+  return null;
 }
 
 // Rozpocznij odtwarzanie muzyki
@@ -381,4 +469,8 @@ module.exports = {
   setLoopSource,
   clearLoopSource,
   getLoopSource,
+  setNotificationChannel,
+  clearNotificationChannel,
+  getNotificationChannel,
+  sendNotification,
 };
