@@ -41,15 +41,33 @@ module.exports = {
         const guildId = interaction.guild.id;
         const playlist = getPlaylist(guildId);
         let files = [];
-        if (playlist) files = listPlaylistTracks(playlist);
-        if (!files || files.length === 0) {
-          // fallback to all tracks in music dir
+        if (playlist) {
+          files = listPlaylistTracks(playlist);
+        } else {
+          // collect tracks from root and all playlists
           const musicDir = path.join(__dirname, "music");
+          files = [];
           if (fs.existsSync(musicDir)) {
-            files = fs
-              .readdirSync(musicDir)
-              .filter((f) => f.toLowerCase().endsWith(".mp3"))
-              .map((f) => path.join(musicDir, f));
+            // root
+            files = files.concat(
+              fs
+                .readdirSync(musicDir)
+                .filter((f) => f.toLowerCase().endsWith(".mp3"))
+                .map((f) => path.join(musicDir, f))
+            );
+            // playlists
+            const items = fs.readdirSync(musicDir);
+            for (const item of items) {
+              const full = path.join(musicDir, item);
+              if (fs.existsSync(full) && fs.statSync(full).isDirectory()) {
+                files = files.concat(
+                  fs
+                    .readdirSync(full)
+                    .filter((f) => f.toLowerCase().endsWith(".mp3"))
+                    .map((f) => path.join(full, f))
+                );
+              }
+            }
           }
         }
         const choices = files
@@ -64,7 +82,7 @@ module.exports = {
       }
 
       if (focusedName === "playlist") {
-        const lists = listPlaylists();
+        const lists = ["none", ...listPlaylists()];
         const filtered = lists
           .filter((c) =>
             c.toLowerCase().includes((focused || "").toLowerCase())
@@ -85,8 +103,15 @@ module.exports = {
     const guildId = interaction.guild.id;
 
     try {
-      // If playlist option provided and no track -> set playlist
+      // If playlist option provided and no track -> set or clear playlist
       if (playlistName && !trackName) {
+        if (playlistName.toLowerCase() === "none") {
+          setPlaylist(guildId, null);
+          return interaction.reply({
+            content: `✅ Playlist selection cleared.`,
+            ephemeral: true,
+          });
+        }
         setPlaylist(guildId, playlistName);
         return interaction.reply({
           content: `✅ Playlist set to **${playlistName}**`,

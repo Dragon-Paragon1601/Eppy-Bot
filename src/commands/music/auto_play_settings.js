@@ -90,10 +90,31 @@ module.exports = {
       });
     }
 
-    const allFiles = fs
-      .readdirSync(musicDir)
-      .filter((f) => f.toLowerCase().endsWith(".mp3"));
-    if (allFiles.length === 0)
+    // Collect mp3s from root music dir and any playlist subfolders
+    let allFiles = [];
+    if (fs.existsSync(musicDir)) {
+      // files directly under musicDir
+      const rootFiles = fs
+        .readdirSync(musicDir)
+        .filter((f) => f.toLowerCase().endsWith(".mp3"))
+        .map((f) => path.join(musicDir, f));
+      allFiles = allFiles.concat(rootFiles);
+
+      // collect from subfolders (playlists)
+      const items = fs.readdirSync(musicDir);
+      for (const item of items) {
+        const full = path.join(musicDir, item);
+        if (fs.existsSync(full) && fs.statSync(full).isDirectory()) {
+          const tracks = fs
+            .readdirSync(full)
+            .filter((f) => f.toLowerCase().endsWith(".mp3"))
+            .map((f) => path.join(full, f));
+          allFiles = allFiles.concat(tracks);
+        }
+      }
+    }
+
+    if (!allFiles || allFiles.length === 0)
       return interaction.editReply({
         content: "❌ No tracks available in the music folder.",
         ephemeral: true,
