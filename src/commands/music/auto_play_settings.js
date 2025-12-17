@@ -32,8 +32,18 @@ module.exports = {
         .setName("value")
         .setDescription("Boolean value for set operations (on/off)")
         .setRequired(false)
+    )
+    .addStringOption((opt) =>
+      opt
+        .setName("random_type")
+        .setDescription("Random mode type")
+        .setRequired(false)
+        .addChoices(
+          { name: "from_playlist", value: "from_playlist" },
+          { name: "playlist", value: "playlist" },
+          { name: "all", value: "all" }
+        )
     ),
-
   async autocomplete(interaction) {
     try {
       const focused = interaction.options.getFocused();
@@ -93,10 +103,10 @@ module.exports = {
       // STATUS: show current mode statuses
       if (mode === "status") {
         const auto = musicHandler.getAutoMode(guildId) ? "ON" : "OFF";
-        const random = musicHandler.getRandomMode(guildId) ? "ON" : "OFF";
+        const randomType = musicHandler.getRandomType(guildId) || "off";
         const loop = musicHandler.getLoopQueueMode(guildId) ? "ON" : "OFF";
         return interaction.editReply({
-          content: `Status — Auto: **${auto}**, Random: **${random}**, Loop: **${loop}**`,
+          content: `Status — Auto: **${auto}**, Random: **${randomType}**, Loop: **${loop}**`,
         });
       }
 
@@ -108,13 +118,55 @@ module.exports = {
         }
         musicHandler.setAutoMode(guildId, value);
         if (value) {
-          let tracks = allFiles.map((f) => path.join(musicDir, f));
-          if (musicHandler.getRandomMode(guildId)) {
-            for (let i = tracks.length - 1; i > 0; i--) {
-              const j = Math.floor(Math.random() * (i + 1));
-              [tracks[i], tracks[j]] = [tracks[j], tracks[i]];
-            }
+          // Build tracks based on selected playlist and random type
+          const playlist = musicHandler.getPlaylist(guildId);
+          let tracks = [];
+          if (playlist) {
+            tracks = musicHandler.listPlaylistTracks(playlist);
+          } else {
+            // tracks from root music dir
+            tracks = allFiles.map((f) => path.join(musicDir, f));
           }
+
+          const randomType = musicHandler.getRandomType(guildId);
+          if (randomType && randomType !== "off") {
+            if (randomType === "from_playlist") {
+              // shuffle tracks from current playlist
+              for (let i = tracks.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [tracks[i], tracks[j]] = [tracks[j], tracks[i]];
+              }
+              tracks = tracks.slice(0, 25);
+            } else if (randomType === "playlist") {
+              // pick random playlist and take up to 25 tracks
+              const lists = musicHandler.listPlaylists();
+              if (lists.length > 0) {
+                const pick = lists[Math.floor(Math.random() * lists.length)];
+                tracks = musicHandler.listPlaylistTracks(pick).slice(0, 25);
+              }
+            } else if (randomType === "all") {
+              // pick 25 random tracks from all available
+              let all = [];
+              const lists = musicHandler.listPlaylists();
+              if (lists.length > 0) {
+                for (const p of lists) {
+                  all = all.concat(musicHandler.listPlaylistTracks(p));
+                }
+              } else {
+                all = allFiles.map((f) => path.join(musicDir, f));
+              }
+              // shuffle and slice 25
+              for (let i = all.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [all[i], all[j]] = [all[j], all[i]];
+              }
+              tracks = all.slice(0, 25);
+            }
+          } else {
+            // not random: cap to 25 if playlist selected
+            if (playlist) tracks = tracks.slice(0, 25);
+          }
+
           await saveQueue(guildId, tracks);
           if (musicHandler.getLoopQueueMode(guildId))
             musicHandler.setLoopSource(guildId, tracks);
@@ -131,13 +183,21 @@ module.exports = {
 
       // RANDOM: toggle/query random mode
       if (mode === "random") {
+        const randomType = interaction.options.getString("random_type");
+        if (randomType) {
+          musicHandler.setRandomType(guildId, randomType);
+          return interaction.editReply({
+            content: `Random type set to **${randomType}**`,
+          });
+        }
         if (value === null) {
-          const cur = musicHandler.getRandomMode(guildId) ? "ON" : "OFF";
+          const cur = musicHandler.getRandomType(guildId) || "off";
           return interaction.editReply({ content: `Random is **${cur}**` });
         }
-        musicHandler.setRandomMode(guildId, value);
+        // boolean toggle: true -> default to from_playlist, false -> off
+        musicHandler.setRandomType(guildId, value ? "from_playlist" : "off");
         return interaction.editReply({
-          content: `Random mode set to **${value ? "ON" : "OFF"}**`,
+          content: `Random mode set to **${value ? "from_playlist" : "off"}**`,
         });
       }
 

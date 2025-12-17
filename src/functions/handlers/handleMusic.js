@@ -25,6 +25,8 @@ const autoModeMap = new Map();
 const randomModeMap = new Map();
 const loopQueueMap = new Map();
 const loopSourceMap = new Map();
+const playlistMap = new Map(); // guildId -> playlist name
+const randomTypeMap = new Map(); // guildId -> 'off'|'from_playlist'|'playlist'|'all'
 
 // Sprawdź czy pierwsza piosenka została rozpoczęta
 function checkFirstSongStarted(guildId) {
@@ -85,6 +87,55 @@ function getLoopQueueMode(guildId) {
 function setLoopSource(guildId, arrayOfPaths) {
   if (!Array.isArray(arrayOfPaths)) return;
   loopSourceMap.set(guildId, arrayOfPaths.slice());
+}
+
+// Playlist selection helpers
+function setPlaylist(guildId, playlistName) {
+  if (!playlistName) return playlistMap.delete(guildId);
+  playlistMap.set(guildId, playlistName);
+}
+
+function getPlaylist(guildId) {
+  return playlistMap.get(guildId) || null;
+}
+
+function listPlaylists() {
+  try {
+    const musicDir = path.join(__dirname, "../../commands/music/music");
+    if (!fs.existsSync(musicDir)) return [];
+    return fs
+      .readdirSync(musicDir)
+      .filter((f) => fs.statSync(path.join(musicDir, f)).isDirectory());
+  } catch (err) {
+    logger.error(`listPlaylists error: ${err}`);
+    return [];
+  }
+}
+
+function listPlaylistTracks(playlistName) {
+  try {
+    const musicDir = path.join(__dirname, "../../commands/music/music");
+    const dir = playlistName ? path.join(musicDir, playlistName) : musicDir;
+    if (!fs.existsSync(dir)) return [];
+    return fs
+      .readdirSync(dir)
+      .filter((f) => f.toLowerCase().endsWith(".mp3"))
+      .map((f) => path.join(dir, f));
+  } catch (err) {
+    logger.error(`listPlaylistTracks error: ${err}`);
+    return [];
+  }
+}
+
+// Random mode type helpers
+function setRandomType(guildId, type) {
+  const allowed = ["off", "from_playlist", "playlist", "all"];
+  if (!allowed.includes(type)) return;
+  randomTypeMap.set(guildId, type);
+}
+
+function getRandomType(guildId) {
+  return randomTypeMap.get(guildId) || "off";
 }
 
 function clearLoopSource(guildId) {
@@ -473,4 +524,10 @@ module.exports = {
   clearNotificationChannel,
   getNotificationChannel,
   sendNotification,
+  setPlaylist,
+  getPlaylist,
+  listPlaylists,
+  listPlaylistTracks,
+  setRandomType,
+  getRandomType,
 };
