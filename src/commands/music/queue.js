@@ -87,16 +87,10 @@ module.exports = {
     if (action === "clear") {
       try {
         await clearQueue(guildId);
-        const clearLoopSong =
-          require("../../functions/handlers/handleMusic").clearLoopSong;
-        clearLoopSong(guildId);
-        if (connections[guildId]) {
-          playersStop(guildId);
-          isPlaying[guildId] = false;
-          players[guildId].stop();
-          connections[guildId]?.destroy();
-          delete connections[guildId];
-        }
+        const mh = require("../../functions/handlers/handleMusic");
+        mh.clearLoopSong(guildId);
+        // stop and cleanup timers/listeners to avoid duplicate playNext when resumed
+        mh.stopAndCleanup(guildId);
 
         await interaction.reply({
           content: "🗑️ Queue cleared!",
@@ -240,14 +234,9 @@ module.exports = {
         }
 
         if (connections[guildId]) {
-          playersStop(guildId);
-          isPlaying[guildId] = false;
-          players[guildId].stop();
-          connections[guildId].destroy();
-          delete connections[guildId];
-          const clearLoopSong =
-            require("../../functions/handlers/handleMusic").clearLoopSong;
-          clearLoopSong(guildId);
+          const mh = require("../../functions/handlers/handleMusic");
+          mh.stopAndCleanup(guildId);
+          mh.clearLoopSong(guildId);
         }
 
         interaction.reply({

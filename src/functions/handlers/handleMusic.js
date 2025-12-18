@@ -21,6 +21,7 @@ let isPlaying = {};
 let players = {};
 let queues = {};
 const loopSongMap = new Map();
+const _startingSet = new Set();
 const autoModeMap = new Map();
 const randomModeMap = new Map();
 const loopQueueMap = new Map();
@@ -265,76 +266,79 @@ async function playNext(guildId, interaction) {
   if (isPlaying[guildId]) {
     return;
   }
+  if (_startingSet.has(guildId)) return; // prevent concurrent starts
+  _startingSet.add(guildId);
 
-  let queue = await getQueue(guildId);
+  try {
+    let queue = await getQueue(guildId);
 
-  await queueEmpty(guildId, interaction);
+    await queueEmpty(guildId, interaction);
 
-  const voiceChannel = interaction.member.voice.channel;
-  if (!voiceChannel) {
-    logger.debug(`🚫 Użytkownik opuścił kanał głosowy. Bot rozłącza się.`);
-    connections[guildId]?.destroy();
-    delete connections[guildId];
-    return;
-  }
-
-  if (
-    !connections[guildId] ||
-    connections[guildId].joinConfig.channelId !== voiceChannel.id
-  ) {
-    if (connections[guildId]) {
-      connections[guildId].destroy();
+    const voiceChannel = interaction.member.voice.channel;
+    if (!voiceChannel) {
+      logger.debug(`🚫 Użytkownik opuścił kanał głosowy. Bot rozłącza się.`);
+      connections[guildId]?.destroy();
+      delete connections[guildId];
+      return;
     }
 
-    connections[guildId] = joinVoiceChannel({
-      channelId: voiceChannel.id,
-      guildId: guildId,
-      adapterCreator: interaction.guild.voiceAdapterCreator,
-      selfDeaf: true,
-    });
+    if (
+      !connections[guildId] ||
+      connections[guildId].joinConfig.channelId !== voiceChannel.id
+    ) {
+      if (connections[guildId]) {
+        connections[guildId].destroy();
+      }
 
-    logger.debug(
-      `✅ Bot dołączył do kanału: ${voiceChannel.id} na serwerze ${guildId}`
+      connections[guildId] = joinVoiceChannel({
+        channelId: voiceChannel.id,
+        guildId: guildId,
+        adapterCreator: interaction.guild.voiceAdapterCreator,
+        selfDeaf: true,
+      });
+
+      logger.debug(
+        `✅ Bot dołączył do kanału: ${voiceChannel.id} na serwerze ${guildId}`
+      );
+    }
+
+    if (!connections[guildId]) {
+      logger.error(
+        `❌ Błąd: Bot nie mógł dołączyć do kanału głosowego na serwerze ${guildId}`
+      );
+      return;
+    }
+
+    const songPath = queue[0];
+    if (!songPath) {
+      logger.error(
+        `🚫 Błąd: Brak poprawnego utworu do odtworzenia dla ${guildId}`
+      );
+      return;
+    }
+
+    logger.info(
+      `🎵 Odtwarzanie dla ${guildId}: ${path
+        .basename(songPath, ".mp3")
+        .replace(/_/g, " ")}`
     );
-  }
 
-  if (!connections[guildId]) {
-    logger.error(
-      `❌ Błąd: Bot nie mógł dołączyć do kanału głosowego na serwerze ${guildId}`
+    isPlaying[guildId] = true;
+
+    const resource = createAudioResource(songPath);
+    if (!players[guildId]) players[guildId] = createAudioPlayer();
+
+    connections[guildId].subscribe(players[guildId]);
+    players[guildId].play(resource);
+    const songName = path.basename(songPath, ".mp3").replace(/_/g, " ");
+    const sentMessage = await sendNotification(
+      guildId,
+      interaction,
+      `🎶 Now playing: **${songName}**`
     );
-    return;
-  }
+    if (!idleTimers[guildId]) idleTimers[guildId] = {};
 
-  const songPath = queue[0];
-  if (!songPath) {
-    logger.error(
-      `🚫 Błąd: Brak poprawnego utworu do odtworzenia dla ${guildId}`
-    );
-    return;
-  }
-
-  logger.info(
-    `🎵 Odtwarzanie dla ${guildId}: ${path
-      .basename(songPath, ".mp3")
-      .replace(/_/g, " ")}`
-  );
-
-  isPlaying[guildId] = true;
-
-  const resource = createAudioResource(songPath);
-  if (!players[guildId]) players[guildId] = createAudioPlayer();
-
-  connections[guildId].subscribe(players[guildId]);
-  players[guildId].play(resource);
-  const songName = path.basename(songPath, ".mp3").replace(/_/g, " ");
-  const sentMessage = await sendNotification(
-    guildId,
-    interaction,
-    `🎶 Now playing: **${songName}**`
-  );
-  if (!idleTimers[guildId]) idleTimers[guildId] = {};
-
-  if (idleTimers[guildId]?.progressInterval) {
+    if (idleTimers[guildId]?.progressInterval) {
     clearInterval(idleTimers[guildId].progressInterval);
   }
 
@@ -375,6 +379,8 @@ async function playNext(guildId, interaction) {
       } else {
         // For a looped song we don't shift the queue so it stays as the first item and will play again
       }
+      // release starting lock (allow future playNext calls)
+      _startingSet.delete(guildId);
       playNext(guildId, interaction);
     });
   } else {
@@ -392,11 +398,16 @@ async function playNext(guildId, interaction) {
           await saveQueue(guildId, queue);
         }
       }
-      playNext(guildId, interaction);
+      // ensure we don't start concurrently
+      if (!_startingSet.has(guildId)) playNext(guildId, interaction);
     });
   }
 
   if (idleTimers[guildId]) clearTimeout(idleTimers[guildId]);
+  } finally {
+    // release starting lock if it somehow was left set and playback didn't start
+    if (!isPlaying[guildId]) _startingSet.delete(guildId);
+  }
 }
 
 // Pobierz kanał kolejki dla danej gildii
@@ -492,6 +503,56 @@ function startPlaying(interaction) {
   }
 }
 
+// Stop playback and clean up timers/listeners to avoid duplicate playNext calls
+function stopAndCleanup(guildId) {
+  try {
+    // clear progress interval if any
+    if (idleTimers[guildId]?.progressInterval) {
+      clearInterval(idleTimers[guildId].progressInterval);
+      delete idleTimers[guildId].progressInterval;
+    }
+    // clear any timeout used for idle disconnects
+    if (idleTimers[guildId] && typeof idleTimers[guildId] === "number") {
+      clearTimeout(idleTimers[guildId]);
+    }
+    if (idleTimers[guildId] && idleTimers[guildId].timeout) {
+      clearTimeout(idleTimers[guildId].timeout);
+      delete idleTimers[guildId].timeout;
+    }
+    delete idleTimers[guildId];
+
+    isPlaying[guildId] = false;
+    firstSongStartedMap.set(guildId, false);
+
+    if (players[guildId]) {
+      try {
+        if (typeof players[guildId].removeAllListeners === "function")
+          players[guildId].removeAllListeners();
+      } catch (e) {
+        logger.error(`Failed removing player listeners for ${guildId}: ${e}`);
+      }
+      try {
+        if (typeof players[guildId].stop === "function")
+          players[guildId].stop();
+      } catch (e) {
+        logger.error(`Failed stopping player for ${guildId}: ${e}`);
+      }
+      // keep players object; it will be re-used or recreated on next play
+    }
+
+    if (connections[guildId]) {
+      try {
+        connections[guildId].destroy();
+      } catch (e) {
+        logger.error(`Failed destroying connection for ${guildId}: ${e}`);
+      }
+      delete connections[guildId];
+    }
+  } catch (err) {
+    logger.error(`stopAndCleanup error for ${guildId}: ${err}`);
+  }
+}
+
 module.exports = {
   getQueue,
   saveQueue,
@@ -530,4 +591,5 @@ module.exports = {
   listPlaylistTracks,
   setRandomType,
   getRandomType,
+  stopAndCleanup,
 };
