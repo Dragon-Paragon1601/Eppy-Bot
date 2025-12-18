@@ -30,6 +30,7 @@ module.exports = {
         .addChoices(
           { name: "play", value: "play" },
           { name: "queue", value: "queue" },
+          { name: "auto", value: "auto" },
           { name: "clear", value: "clear" },
           { name: "resume", value: "resume" },
           { name: "skip", value: "skip" },
@@ -43,6 +44,18 @@ module.exports = {
       option
         .setName("index")
         .setDescription("Song number for 'skipto' or 'unplay' action")
+        .setRequired(false)
+    )
+    .addBooleanOption((option) =>
+      option
+        .setName("value")
+        .setDescription("Used for 'auto' action to enable or disable")
+        .setRequired(false)
+    )
+    .addBooleanOption((option) =>
+      option
+        .setName("random")
+        .setDescription("When enabling auto, set random selection")
         .setRequired(false)
     ),
 
@@ -91,6 +104,11 @@ module.exports = {
         mh.clearLoopSong(guildId);
         // stop and cleanup timers/listeners to avoid duplicate playNext when resumed
         mh.stopAndCleanup(guildId);
+        // disable auto when queue is cleared
+        mh.setAutoMode(guildId, false);
+        mh.setRandomMode(guildId, false);
+        mh.setLoopQueueMode(guildId, false);
+        mh.clearLoopSource(guildId);
 
         await interaction.reply({
           content: "🗑️ Queue cleared!",
@@ -145,6 +163,106 @@ module.exports = {
       });
     }
 
+    if (action === "auto") {
+      // /queue auto [value:boolean] [random:boolean]
+      try {
+        const value = interaction.options.getBoolean("value");
+        const random = interaction.options.getBoolean("random");
+        const musicHandler = require("../../functions/handlers/handleMusic");
+
+        // status
+        if (value === null) {
+          const cur = musicHandler.getAutoMode(guildId) ? "ON" : "OFF";
+          const rnd = musicHandler.getRandomMode(guildId) ? "ON" : "OFF";
+          const sel = musicHandler.getPlaylist(guildId) || "(none)";
+          return interaction.reply({
+            content: `Auto: **${cur}** | Random: **${rnd}** | Playlist: **${sel}**`,
+            ephemeral: true,
+          });
+        }
+
+        if (value) {
+          // enable auto: build up to 25 tracks from selected playlist or all playlists
+          const playlist = musicHandler.getPlaylist(guildId);
+          let tracks = [];
+          const musicDir = path.join(__dirname, "music");
+
+          if (playlist) {
+            tracks = musicHandler.listPlaylistTracks(playlist).slice(0, 25);
+          } else {
+            // collect from root and playlists
+            if (fs.existsSync(musicDir)) {
+              tracks = tracks.concat(
+                fs
+                  .readdirSync(musicDir)
+                  .filter((f) => f.toLowerCase().endsWith(".mp3"))
+                  .map((f) => path.join(musicDir, f))
+              );
+              const items = fs.readdirSync(musicDir);
+              for (const item of items) {
+                const full = path.join(musicDir, item);
+                if (fs.existsSync(full) && fs.statSync(full).isDirectory()) {
+                  tracks = tracks.concat(
+                    fs
+                      .readdirSync(full)
+                      .filter((f) => f.toLowerCase().endsWith(".mp3"))
+                      .map((f) => path.join(full, f))
+                  );
+                }
+              }
+            }
+            // take up to 25
+            tracks = tracks.slice(0, 25);
+          }
+
+          if (!tracks || tracks.length === 0)
+            return interaction.reply({
+              content: "❌ No tracks found to start auto",
+              ephemeral: true,
+            });
+
+          // random is a boolean toggle that shuffles the selection
+          if (random) {
+            for (let i = tracks.length - 1; i > 0; i--) {
+              const j = Math.floor(Math.random() * (i + 1));
+              [tracks[i], tracks[j]] = [tracks[j], tracks[i]];
+            }
+            musicHandler.setRandomMode(guildId, true);
+          } else {
+            musicHandler.setRandomMode(guildId, false);
+          }
+
+          await saveQueue(guildId, tracks);
+          // Auto implies looping the chosen source
+          musicHandler.setLoopSource(guildId, tracks);
+          musicHandler.setLoopQueueMode(guildId, true);
+          musicHandler.setAutoMode(guildId, true);
+
+          if (!isPlay(guildId)) await playNext(guildId, interaction);
+
+          return interaction.reply({
+            content: `✅ Auto enabled (${tracks.length} tracks)`,
+            ephemeral: true,
+          });
+        } else {
+          // disable auto
+          musicHandler.setAutoMode(guildId, false);
+          musicHandler.setRandomMode(guildId, false);
+          musicHandler.setLoopQueueMode(guildId, false);
+          musicHandler.clearLoopSource(guildId);
+          return interaction.reply({
+            content: `✅ Auto disabled`,
+            ephemeral: true,
+          });
+        }
+      } catch (err) {
+        logger.error(`Error in /queue auto: ${err}`);
+        return interaction.reply({
+          content: `❌ Error: ${err.message}`,
+          ephemeral: true,
+        });
+      }
+    }
     if (action === "skip") {
       if (!queue || queue.length === 0) {
         return interaction.reply({
@@ -237,6 +355,11 @@ module.exports = {
           const mh = require("../../functions/handlers/handleMusic");
           mh.stopAndCleanup(guildId);
           mh.clearLoopSong(guildId);
+          // disable auto when stopping
+          mh.setAutoMode(guildId, false);
+          mh.setRandomMode(guildId, false);
+          mh.setLoopQueueMode(guildId, false);
+          mh.clearLoopSource(guildId);
         }
 
         interaction.reply({

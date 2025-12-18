@@ -339,71 +339,71 @@ async function playNext(guildId, interaction) {
     if (!idleTimers[guildId]) idleTimers[guildId] = {};
 
     if (idleTimers[guildId]?.progressInterval) {
-    clearInterval(idleTimers[guildId].progressInterval);
-  }
-
-  if (sentMessage && typeof sentMessage.edit === "function") {
-    const totalTime = await getSongDuration(songPath);
-
-    idleTimers[guildId].progressInterval = setInterval(() => {
-      if (players[guildId].state.status === AudioPlayerStatus.Playing) {
-        const currentTime = players[guildId].state.resource.playbackDuration;
-        try {
-          sentMessage.edit(
-            `🎶 **${songName}**\n${formatTime(currentTime)}/${formatTime(
-              totalTime
-            )} [${createProgressBar(currentTime, totalTime)}]`
-          );
-        } catch (e) {
-          logger.error(`Failed editing progress message: ${e}`);
-        }
-      }
-    }, 1000);
-
-    players[guildId].once(AudioPlayerStatus.Idle, async () => {
       clearInterval(idleTimers[guildId].progressInterval);
-      try {
-        sentMessage.edit(`🎶 Finished playing: **${songName}**`);
-      } catch (e) {
-        logger.error(`Failed editing finished message: ${e}`);
-      }
-      isPlaying[guildId] = false;
-      firstSongStartedMap.set(guildId, false);
-      queue = await getQueue(guildId);
-      const loopSong = loopSongMap.get(guildId);
-      if (!loopSong || loopSong !== songPath) {
-        if (queue.length > 0) {
-          queue.shift();
-          await saveQueue(guildId, queue);
-        }
-      } else {
-        // For a looped song we don't shift the queue so it stays as the first item and will play again
-      }
-      // release starting lock (allow future playNext calls)
-      _startingSet.delete(guildId);
-      playNext(guildId, interaction);
-    });
-  } else {
-    // No editable message available; fall back to minimal idle handling
-    players[guildId].once(AudioPlayerStatus.Idle, async () => {
-      if (idleTimers[guildId]?.progressInterval)
-        clearInterval(idleTimers[guildId].progressInterval);
-      isPlaying[guildId] = false;
-      firstSongStartedMap.set(guildId, false);
-      queue = await getQueue(guildId);
-      const loopSong = loopSongMap.get(guildId);
-      if (!loopSong || loopSong !== songPath) {
-        if (queue.length > 0) {
-          queue.shift();
-          await saveQueue(guildId, queue);
-        }
-      }
-      // ensure we don't start concurrently
-      if (!_startingSet.has(guildId)) playNext(guildId, interaction);
-    });
-  }
+    }
 
-  if (idleTimers[guildId]) clearTimeout(idleTimers[guildId]);
+    if (sentMessage && typeof sentMessage.edit === "function") {
+      const totalTime = await getSongDuration(songPath);
+
+      idleTimers[guildId].progressInterval = setInterval(() => {
+        if (players[guildId].state.status === AudioPlayerStatus.Playing) {
+          const currentTime = players[guildId].state.resource.playbackDuration;
+          try {
+            sentMessage.edit(
+              `🎶 **${songName}**\n${formatTime(currentTime)}/${formatTime(
+                totalTime
+              )} [${createProgressBar(currentTime, totalTime)}]`
+            );
+          } catch (e) {
+            logger.error(`Failed editing progress message: ${e}`);
+          }
+        }
+      }, 1000);
+
+      players[guildId].once(AudioPlayerStatus.Idle, async () => {
+        clearInterval(idleTimers[guildId].progressInterval);
+        try {
+          sentMessage.edit(`🎶 Finished playing: **${songName}**`);
+        } catch (e) {
+          logger.error(`Failed editing finished message: ${e}`);
+        }
+        isPlaying[guildId] = false;
+        firstSongStartedMap.set(guildId, false);
+        queue = await getQueue(guildId);
+        const loopSong = loopSongMap.get(guildId);
+        if (!loopSong || loopSong !== songPath) {
+          if (queue.length > 0) {
+            queue.shift();
+            await saveQueue(guildId, queue);
+          }
+        } else {
+          // For a looped song we don't shift the queue so it stays as the first item and will play again
+        }
+        // release starting lock (allow future playNext calls)
+        _startingSet.delete(guildId);
+        playNext(guildId, interaction);
+      });
+    } else {
+      // No editable message available; fall back to minimal idle handling
+      players[guildId].once(AudioPlayerStatus.Idle, async () => {
+        if (idleTimers[guildId]?.progressInterval)
+          clearInterval(idleTimers[guildId].progressInterval);
+        isPlaying[guildId] = false;
+        firstSongStartedMap.set(guildId, false);
+        queue = await getQueue(guildId);
+        const loopSong = loopSongMap.get(guildId);
+        if (!loopSong || loopSong !== songPath) {
+          if (queue.length > 0) {
+            queue.shift();
+            await saveQueue(guildId, queue);
+          }
+        }
+        // ensure we don't start concurrently
+        if (!_startingSet.has(guildId)) playNext(guildId, interaction);
+      });
+    }
+
+    if (idleTimers[guildId]) clearTimeout(idleTimers[guildId]);
   } finally {
     // release starting lock if it somehow was left set and playback didn't start
     if (!isPlaying[guildId]) _startingSet.delete(guildId);
@@ -523,6 +523,18 @@ function stopAndCleanup(guildId) {
 
     isPlaying[guildId] = false;
     firstSongStartedMap.set(guildId, false);
+
+    // Ensure auto/random/loop modes are disabled when stopping to avoid leftover behavior
+    try {
+      autoModeMap.set(guildId, false);
+      randomModeMap.set(guildId, false);
+      loopQueueMap.set(guildId, false);
+      loopSourceMap.delete(guildId);
+    } catch (e) {
+      logger.error(
+        `Failed resetting auto/random/loop state for ${guildId}: ${e}`
+      );
+    }
 
     if (players[guildId]) {
       try {
