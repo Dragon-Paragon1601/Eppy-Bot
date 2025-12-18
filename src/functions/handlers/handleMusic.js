@@ -560,6 +560,8 @@ function stopAndCleanup(guildId) {
       }
       delete connections[guildId];
     }
+    // ensure start-lock is cleared so playNext can run again after stop/clear
+    if (_startingSet.has(guildId)) _startingSet.delete(guildId);
   } catch (err) {
     logger.error(`stopAndCleanup error for ${guildId}: ${err}`);
   }
