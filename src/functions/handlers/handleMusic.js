@@ -274,6 +274,10 @@ async function playNext(guildId, interaction) {
 
     await queueEmpty(guildId, interaction);
 
+    // In case queueEmpty refilled the queue (e.g., looped playlist), re-fetch it so
+    // the rest of this function sees the newly saved tracks.
+    queue = await getQueue(guildId);
+
     const voiceChannel = interaction.member.voice.channel;
     if (!voiceChannel) {
       logger.debug(`🚫 Użytkownik opuścił kanał głosowy. Bot rozłącza się.`);
