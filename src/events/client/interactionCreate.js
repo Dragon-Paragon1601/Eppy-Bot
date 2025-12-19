@@ -27,15 +27,19 @@ module.exports = {
         await command.execute(interaction, client);
       } catch (error) {
         logger.error(`${error}`);
-        await interaction.reply({
-          content: `Somthing is not yes...`,
-          embeds: [
-            new EmbedBuilder().setImage(
-              "https://c.tenor.com/MbqJKvm1IXgAAAAC/tenor.gif"
-            ),
-          ],
-          ephemeral: true,
-        });
+        try {
+          await interaction.reply({
+            content: `Somthing is not yes...`,
+            embeds: [
+              new EmbedBuilder().setImage(
+                "https://c.tenor.com/MbqJKvm1IXgAAAAC/tenor.gif"
+              ),
+            ],
+            ephemeral: true,
+          });
+        } catch (err) {
+          logger.error(`Failed to send error reply: ${err}`);
+        }
       }
     }
   },

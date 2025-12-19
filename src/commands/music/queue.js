@@ -67,9 +67,14 @@ module.exports = {
 
     if (action === "queue") {
       if (!queue || queue.length === 0) {
-        return interaction.reply({
-          content: "🎵 Queue is now empty.",
-        });
+        try {
+          return await interaction.reply({
+            content: "🎵 Queue is now empty.",
+          });
+        } catch (err) {
+          logger.error(`Failed to send queue empty reply: ${err}`);
+          return null;
+        }
       }
 
       const displayedQueue = queue
@@ -90,9 +95,14 @@ module.exports = {
             }** more songs!`
           : `📁 **Current queue:**\n${displayedQueue}`;
 
-      return interaction.reply({
-        content: queueMessage,
-      });
+      try {
+        return await interaction.reply({
+          content: queueMessage,
+        });
+      } catch (err) {
+        logger.error(`Failed to send queue reply: ${err}`);
+        return null;
+      }
     }
 
     // play action removed: use `/play` command to add specific tracks
@@ -325,9 +335,13 @@ module.exports = {
       queue.splice(0, amount);
       await saveQueue(guildId, queue);
 
-      interaction.reply({
-        content: `⏭️ Skipped to songs: **${amount}**.`,
-      });
+      try {
+        await interaction.reply({
+          content: `⏭️ Skipped to songs: **${amount}**.`,
+        });
+      } catch (err) {
+        logger.error(`Failed to reply skipto: ${err}`);
+      }
       playersStop(guildId);
       await playNext(guildId, interaction);
     }
@@ -352,10 +366,14 @@ module.exports = {
           mh.clearLoopSource(guildId);
         }
 
-        interaction.reply({
-          content: "⏹️ Music stopped and disconnected from channel",
-          ephemeral: false,
-        });
+        try {
+          await interaction.reply({
+            content: "⏹️ Music stopped and disconnected from channel",
+            ephemeral: false,
+          });
+        } catch (err) {
+          logger.error(`Failed to send stop reply: ${err}`);
+        }
       } catch (error) {
         logger.error(`Error stopping players: ${error}`);
         await interaction.reply({
@@ -407,24 +425,37 @@ module.exports = {
         .replace(/\.mp3$/, "")
         .replace(/_/g, " ");
 
-      interaction.reply({
-        content: `🗑️ Deleted **${removedSongName}** from queue`,
-      });
+      try {
+        await interaction.reply({
+          content: `🗑️ Deleted **${removedSongName}** from queue`,
+        });
+      } catch (err) {
+        logger.error(`Failed to reply removed song: ${err}`);
+      }
     }
 
     if (action === "resume") {
       await interaction.deferReply();
 
       if (!queue || queue.length === 0) {
-        return interaction.editReply({
-          content: "🚫 Queue is empty. Use `/play` to add more songs!",
-          ephemeral: true,
-        });
+        try {
+          return await interaction.editReply({
+            content: "🚫 Queue is empty. Use `/play` to add more songs!",
+            ephemeral: true,
+          });
+        } catch (err) {
+          logger.error(`Failed to edit reply (queue empty): ${err}`);
+          return null;
+        }
       }
 
-      interaction.editReply({
-        content: "▶️ Resuming playback...",
-      });
+      try {
+        await interaction.editReply({
+          content: "▶️ Resuming playback...",
+        });
+      } catch (err) {
+        logger.error(`Failed to edit reply (resuming): ${err}`);
+      }
 
       await playNext(guildId, interaction);
     }
