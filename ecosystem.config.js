@@ -5,18 +5,29 @@ module.exports = {
     {
       name: "Eppy",
       script: "src/bot.js",
-      log_date_format: "YYYY-MM-DD HH:mm Z", 
+
+      // LOGI
+      log_date_format: "YYYY-MM-DD HH:mm Z",
       error_file: path.join(__dirname, "logs/PM2error/error.log"),
       out_file: path.join(__dirname, "logs/PM2output/output.log"),
-      pid_file: path.join(__dirname, "logs/app/app.pid"),
-      cron_restart: '0 5 */2 * *',
       merge_logs: true,
-      watch: false,  
-      max_memory_restart: "16000M",
-      node_args: "--max-old-space-size=12288",
+
+      // STABILNOŚĆ
+      watch: false,
       autorestart: true,
-      listen_timeout: 5000,  
-      restart_delay: 10000,    
-    }
-  ]
+      listen_timeout: 5000,
+      restart_delay: 5000,
+
+      // RAM — KLUCZOWE
+      max_memory_restart: "700M",
+      node_args: [
+        "--max-old-space-size=512",
+        "--optimize_for_size",
+        "--gc_interval=100",
+      ].join(" "),
+
+      // CRON (OK)
+      cron_restart: "0 5 */2 * *",
+    },
+  ],
 };

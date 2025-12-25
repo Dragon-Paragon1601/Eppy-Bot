@@ -193,7 +193,7 @@ module.exports = {
         }
 
         // Otherwise (value === true OR value === null) -> enable auto immediately
-        // enable auto: build up to 25 tracks from selected playlist or all playlists
+        // enable auto: build up to 50 tracks from selected playlist or all playlists
         const playlist = musicHandler.getPlaylist(guildId);
         let tracks = [];
         const musicDir = path.join(__dirname, "music");
@@ -222,8 +222,8 @@ module.exports = {
               }
             }
           }
-          // take up to 25
-          tracks = tracks.slice(0, 25);
+          // take up to 50
+          tracks = tracks.slice(0, 50);
         }
 
         if (!tracks || tracks.length === 0)
