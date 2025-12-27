@@ -199,7 +199,7 @@ module.exports = {
         const musicDir = path.join(__dirname, "music");
 
         if (playlist) {
-          tracks = musicHandler.listPlaylistTracks(playlist).slice(0, 25);
+          tracks = musicHandler.listPlaylistTracks(playlist).slice(0, 50);
         } else {
           // collect from root and playlists
           if (fs.existsSync(musicDir)) {
