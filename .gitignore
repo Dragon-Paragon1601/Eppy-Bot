@@ -1,9 +1,11 @@
 src/functions/handlers/queueConfig.json
 send_commit_gui.ps1
+youtube_links.txt
 send_commit.bat
 node_modules/
 cookies.txt
 .gitignore
+spotify.js
 Done.txt
 /music/
 audio/
