@@ -193,13 +193,14 @@ module.exports = {
         }
 
         // Otherwise (value === true OR value === null) -> enable auto immediately
-        // enable auto: build up to 50 tracks from selected playlist or all playlists
+        // enable auto: build up to 150 tracks from non-playlist sources, or use full playlist if one is selected
         const playlist = musicHandler.getPlaylist(guildId);
         let tracks = [];
         const musicDir = path.join(__dirname, "music");
 
         if (playlist) {
-          tracks = musicHandler.listPlaylistTracks(playlist).slice(0, 50);
+          // when a playlist is explicitly selected we do NOT limit the number of tracks
+          tracks = musicHandler.listPlaylistTracks(playlist);
         } else {
           // collect from root and playlists
           if (fs.existsSync(musicDir)) {
@@ -222,8 +223,7 @@ module.exports = {
               }
             }
           }
-          // take up to 50
-          tracks = tracks.slice(0, 50);
+          // do not slice here; we'll optionally shuffle first and then limit to 150 below
         }
 
         if (!tracks || tracks.length === 0)
@@ -241,6 +241,11 @@ module.exports = {
           musicHandler.setRandomMode(guildId, true);
         } else {
           musicHandler.setRandomMode(guildId, false);
+        }
+
+        // if not using a playlist, limit to 150 tracks AFTER optional shuffle
+        if (!playlist) {
+          tracks = tracks.slice(0, 150);
         }
 
         await saveQueue(guildId, tracks);
