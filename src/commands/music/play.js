@@ -33,11 +33,12 @@ module.exports = {
         .setRequired(false)
         .setAutocomplete(true),
     )
-    .addBooleanOption((option) =>
+    .addStringOption((option) =>
       option
         .setName("now")
-        .setDescription("Play after current track")
-        .setRequired(false),
+        .setDescription("Play after current track (true/false)")
+        .setRequired(false)
+        .setAutocomplete(true),
     ),
 
   async autocomplete(interaction) {
@@ -99,6 +100,18 @@ module.exports = {
           filtered.map((name) => ({ name, value: name })),
         );
       }
+
+      if (focusedName === "now") {
+        const options = ["true", "false"];
+        const filtered = options
+          .filter((c) =>
+            c.toLowerCase().includes((focused || "").toLowerCase()),
+          )
+          .slice(0, 25);
+        return interaction.respond(
+          filtered.map((name) => ({ name, value: name })),
+        );
+      }
     } catch (err) {
       logger.error(`play autocomplete error: ${err}`);
     }
@@ -107,7 +120,7 @@ module.exports = {
   async execute(interaction) {
     const trackName = interaction.options.getString("track");
     const playlistName = interaction.options.getString("playlist");
-    const playNow = interaction.options.getString("now") === "now";
+    const playNow = interaction.options.getString("now") === "true";
     const guildId = interaction.guild.id;
 
     try {
