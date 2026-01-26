@@ -166,7 +166,12 @@ async function addToQueue(guildId, songPath) {
   queue.push(songPath);
   await saveQueue(guildId, queue);
 }
-
+// Dodaj piosenk\u0119 na 2 miejsce (index 1) w kolejce
+async function addToQueueNext(guildId, songPath) {
+  let queue = await getQueue(guildId);
+  queue.splice(1, 0, songPath);
+  await saveQueue(guildId, queue);
+}
 // Wyczyść kolejkę dla danej gildii
 async function clearQueue(guildId) {
   await saveQueue(guildId, []);
@@ -212,7 +217,7 @@ async function queueEmpty(guildId, interaction) {
       const source = loopSourceMap.get(guildId);
       await saveQueue(guildId, [...source]);
       logger.debug(
-        `🔁 Looping queue for gildii ${guildId}. Refilled ${source.length} tracks.`
+        `🔁 Looping queue for gildii ${guildId}. Refilled ${source.length} tracks.`,
       );
       playNext(guildId, interaction);
       return;
@@ -302,13 +307,13 @@ async function playNext(guildId, interaction) {
       });
 
       logger.debug(
-        `✅ Bot dołączył do kanału: ${voiceChannel.id} na serwerze ${guildId}`
+        `✅ Bot dołączył do kanału: ${voiceChannel.id} na serwerze ${guildId}`,
       );
     }
 
     if (!connections[guildId]) {
       logger.error(
-        `❌ Błąd: Bot nie mógł dołączyć do kanału głosowego na serwerze ${guildId}`
+        `❌ Błąd: Bot nie mógł dołączyć do kanału głosowego na serwerze ${guildId}`,
       );
       return;
     }
@@ -316,7 +321,7 @@ async function playNext(guildId, interaction) {
     const songPath = queue[0];
     if (!songPath) {
       logger.error(
-        `🚫 Błąd: Brak poprawnego utworu do odtworzenia dla ${guildId}`
+        `🚫 Błąd: Brak poprawnego utworu do odtworzenia dla ${guildId}`,
       );
       return;
     }
@@ -324,7 +329,7 @@ async function playNext(guildId, interaction) {
     logger.info(
       `🎵 Odtwarzanie dla ${guildId}: ${path
         .basename(songPath, ".mp3")
-        .replace(/_/g, " ")}`
+        .replace(/_/g, " ")}`,
     );
 
     isPlaying[guildId] = true;
@@ -338,7 +343,7 @@ async function playNext(guildId, interaction) {
     const sentMessage = await sendNotification(
       guildId,
       interaction,
-      `🎶 Now playing: **${songName}**`
+      `🎶 Now playing: **${songName}**`,
     );
     if (!idleTimers[guildId]) idleTimers[guildId] = {};
 
@@ -355,8 +360,8 @@ async function playNext(guildId, interaction) {
           try {
             sentMessage.edit(
               `🎶 **${songName}**\n${formatTime(currentTime)}/${formatTime(
-                totalTime
-              )} [${createProgressBar(currentTime, totalTime)}]`
+                totalTime,
+              )} [${createProgressBar(currentTime, totalTime)}]`,
             );
           } catch (e) {
             logger.error(`Failed editing progress message: ${e}`);
@@ -536,7 +541,7 @@ function stopAndCleanup(guildId) {
       loopSourceMap.delete(guildId);
     } catch (e) {
       logger.error(
-        `Failed resetting auto/random/loop state for ${guildId}: ${e}`
+        `Failed resetting auto/random/loop state for ${guildId}: ${e}`,
       );
     }
 
@@ -575,6 +580,7 @@ module.exports = {
   getQueue,
   saveQueue,
   addToQueue,
+  addToQueueNext,
   clearQueue,
   playNext,
   startPlaying,

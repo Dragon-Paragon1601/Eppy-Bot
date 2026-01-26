@@ -4,6 +4,7 @@ const fs = require("fs");
 const logger = require("../../logger");
 const {
   addToQueue,
+  addToQueueNext,
   saveQueue,
   playNext,
   isPlay,
@@ -23,14 +24,20 @@ module.exports = {
         .setName("track")
         .setDescription("Track name (autocomplete)")
         .setRequired(false)
-        .setAutocomplete(true)
+        .setAutocomplete(true),
     )
     .addStringOption((option) =>
       option
         .setName("playlist")
         .setDescription("Set or choose a playlist (folder)")
         .setRequired(false)
-        .setAutocomplete(true)
+        .setAutocomplete(true),
+    )
+    .addStringOption((option) =>
+      option
+        .setName("now")
+        .setDescription("Play after current track")
+        .setRequired(false),
     ),
 
   async autocomplete(interaction) {
@@ -53,7 +60,7 @@ module.exports = {
               fs
                 .readdirSync(musicDir)
                 .filter((f) => f.toLowerCase().endsWith(".mp3"))
-                .map((f) => path.join(musicDir, f))
+                .map((f) => path.join(musicDir, f)),
             );
             // playlists
             const items = fs.readdirSync(musicDir);
@@ -64,7 +71,7 @@ module.exports = {
                   fs
                     .readdirSync(full)
                     .filter((f) => f.toLowerCase().endsWith(".mp3"))
-                    .map((f) => path.join(full, f))
+                    .map((f) => path.join(full, f)),
                 );
               }
             }
@@ -73,11 +80,11 @@ module.exports = {
         const choices = files
           .map((f) => path.basename(f).replace(/\.mp3$/i, ""))
           .filter((c) =>
-            c.toLowerCase().includes((focused || "").toLowerCase())
+            c.toLowerCase().includes((focused || "").toLowerCase()),
           )
           .slice(0, 25);
         return interaction.respond(
-          choices.map((name) => ({ name, value: name }))
+          choices.map((name) => ({ name, value: name })),
         );
       }
 
@@ -85,11 +92,11 @@ module.exports = {
         const lists = ["none", ...listPlaylists()];
         const filtered = lists
           .filter((c) =>
-            c.toLowerCase().includes((focused || "").toLowerCase())
+            c.toLowerCase().includes((focused || "").toLowerCase()),
           )
           .slice(0, 25);
         return interaction.respond(
-          filtered.map((name) => ({ name, value: name }))
+          filtered.map((name) => ({ name, value: name })),
         );
       }
     } catch (err) {
@@ -100,6 +107,7 @@ module.exports = {
   async execute(interaction) {
     const trackName = interaction.options.getString("track");
     const playlistName = interaction.options.getString("playlist");
+    const playNow = interaction.options.getString("now") === "now";
     const guildId = interaction.guild.id;
 
     try {
@@ -159,18 +167,32 @@ module.exports = {
 
       // Use existing queue logic: add to queue or play now
       if (isPlay(guildId)) {
-        await addToQueue(guildId, filePath);
         const songName = path.basename(filePath, ".mp3").replace(/_/g, " ");
-        const notifyMsg = `▶️ Added to queue: **${songName}**`;
-        try {
-          await sendNotification(guildId, interaction, notifyMsg);
-        } catch (e) {
-          logger.error(`Failed sending add-to-queue notification: ${e}`);
+        if (playNow) {
+          await addToQueueNext(guildId, filePath);
+          const notifyMsg = `⏭️ Playing next: **${songName}**`;
+          try {
+            await sendNotification(guildId, interaction, notifyMsg);
+          } catch (e) {
+            logger.error(`Failed sending add-to-queue notification: ${e}`);
+          }
+          return interaction.reply({
+            content: `⏭️ Playing next: **${songName}**`,
+            ephemeral: true,
+          });
+        } else {
+          await addToQueue(guildId, filePath);
+          const notifyMsg = `▶️ Added to queue: **${songName}**`;
+          try {
+            await sendNotification(guildId, interaction, notifyMsg);
+          } catch (e) {
+            logger.error(`Failed sending add-to-queue notification: ${e}`);
+          }
+          return interaction.reply({
+            content: `▶️ Added to queue: **${songName}**`,
+            ephemeral: true,
+          });
         }
-        return interaction.reply({
-          content: `▶️ Added to queue: **${songName}**`,
-          ephemeral: true,
-        });
       } else {
         await saveQueue(guildId, [filePath]);
         await playNext(guildId, interaction);
