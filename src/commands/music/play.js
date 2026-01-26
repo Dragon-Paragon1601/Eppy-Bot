@@ -33,7 +33,7 @@ module.exports = {
         .setRequired(false)
         .setAutocomplete(true),
     )
-    .addStringOption((option) =>
+    .addBooleanOption((option) =>
       option
         .setName("now")
         .setDescription("Play after current track")
