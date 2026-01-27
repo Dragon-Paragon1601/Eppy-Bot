@@ -266,6 +266,24 @@ async function getSongDuration(songPath) {
   }
 }
 
+// Pobierz nazwę piosenki - jeśli dostępne metadane artist/title to je użyj, inaczej nazwę pliku
+async function getSongName(songPath) {
+  try {
+    const metadata = await mm.parseFile(songPath);
+    const artist = metadata.common?.artist;
+    const title = metadata.common?.title;
+
+    if (artist && title) {
+      return `${artist} - ${title}`;
+    }
+  } catch (err) {
+    logger.debug(`Nie można pobrać metadanych dla ${songPath}: ${err}`);
+  }
+
+  // Fallback do nazwy pliku
+  return path.basename(songPath, ".mp3").replace(/_/g, " ");
+}
+
 // Odtwórz następną piosenkę w kolejce
 async function playNext(guildId, interaction) {
   if (isPlaying[guildId]) {
@@ -326,12 +344,6 @@ async function playNext(guildId, interaction) {
       return;
     }
 
-    logger.info(
-      `🎵 Odtwarzanie dla ${guildId}: ${path
-        .basename(songPath, ".mp3")
-        .replace(/_/g, " ")}`,
-    );
-
     isPlaying[guildId] = true;
 
     const resource = createAudioResource(songPath);
@@ -339,7 +351,9 @@ async function playNext(guildId, interaction) {
 
     connections[guildId].subscribe(players[guildId]);
     players[guildId].play(resource);
-    const songName = path.basename(songPath, ".mp3").replace(/_/g, " ");
+    const songName = await getSongName(songPath);
+
+    logger.info(`🎵 Odtwarzanie dla ${guildId}: ${songName}`);
     const sentMessage = await sendNotification(
       guildId,
       interaction,
@@ -616,4 +630,5 @@ module.exports = {
   setRandomType,
   getRandomType,
   stopAndCleanup,
+  getSongName,
 };

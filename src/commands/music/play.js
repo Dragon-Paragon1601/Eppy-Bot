@@ -13,6 +13,7 @@ const {
   getPlaylist,
   listPlaylists,
   listPlaylistTracks,
+  getSongName,
 } = require("../../functions/handlers/handleMusic");
 
 module.exports = {
@@ -180,7 +181,7 @@ module.exports = {
 
       // Use existing queue logic: add to queue or play now
       if (isPlay(guildId)) {
-        const songName = path.basename(filePath, ".mp3").replace(/_/g, " ");
+        const songName = await getSongName(filePath);
         if (playNow) {
           await addToQueueNext(guildId, filePath);
           const notifyMsg = `⏭️ Playing next: **${songName}**`;
@@ -209,10 +210,9 @@ module.exports = {
       } else {
         await saveQueue(guildId, [filePath]);
         await playNext(guildId, interaction);
+        const songName = await getSongName(filePath);
         return interaction.reply({
-          content: `🎶 Now playing: **${path
-            .basename(filePath, ".mp3")
-            .replace(/_/g, " ")}**`,
+          content: `🎶 Now playing: **${songName}**`,
         });
       }
     } catch (err) {

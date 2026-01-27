@@ -7,6 +7,7 @@ const {
   isPlay,
   playersStop,
   clearQueue,
+  getSongName,
 } = require("../../functions/handlers/handleMusic");
 const {
   clearAudioFolders,
@@ -37,26 +38,26 @@ module.exports = {
           { name: "shuffle", value: "shuffle" },
           { name: "skipto", value: "skipto" },
           { name: "stop", value: "stop" },
-          { name: "unplay", value: "unplay" }
-        )
+          { name: "unplay", value: "unplay" },
+        ),
     )
     .addIntegerOption((option) =>
       option
         .setName("index")
         .setDescription("Song number for 'skipto' or 'unplay' action")
-        .setRequired(false)
+        .setRequired(false),
     )
     .addBooleanOption((option) =>
       option
         .setName("value")
         .setDescription("Used for 'auto' action to enable or disable")
-        .setRequired(false)
+        .setRequired(false),
     )
     .addBooleanOption((option) =>
       option
         .setName("random")
         .setDescription("When enabling auto, set random selection")
-        .setRequired(false)
+        .setRequired(false),
     ),
 
   async execute(interaction) {
@@ -77,16 +78,12 @@ module.exports = {
         }
       }
 
-      const displayedQueue = queue
-        .slice(0, 25)
-        .map((file, index) => {
-          const songName = path
-            .basename(file)
-            .replace(/\.mp3$/, "")
-            .replace(/_/g, " ");
+      const displayedQueue = await Promise.all(
+        queue.slice(0, 25).map(async (file, index) => {
+          const songName = await getSongName(file);
           return `\`${index + 1}.\` **${songName}**`;
-        })
-        .join("\n");
+        }),
+      ).then((results) => results.join("\n"));
 
       const queueMessage =
         queue.length > 25
@@ -150,16 +147,12 @@ module.exports = {
       await shuffleQueue(guildId);
 
       const queueNew = await getQueue(guildId);
-      const displayedQueue = queueNew
-        .slice(0, 25)
-        .map((file, index) => {
-          const songName = path
-            .basename(file)
-            .replace(/\.mp3$/, "")
-            .replace(/_/g, " ");
+      const displayedQueue = await Promise.all(
+        queueNew.slice(0, 25).map(async (file, index) => {
+          const songName = await getSongName(file);
           return `\`${index + 1}.\` **${songName}**`;
-        })
-        .join("\n");
+        }),
+      ).then((results) => results.join("\n"));
 
       const queueMessage =
         queueNew.length > 25
@@ -208,7 +201,7 @@ module.exports = {
               fs
                 .readdirSync(musicDir)
                 .filter((f) => f.toLowerCase().endsWith(".mp3"))
-                .map((f) => path.join(musicDir, f))
+                .map((f) => path.join(musicDir, f)),
             );
             const items = fs.readdirSync(musicDir);
             for (const item of items) {
@@ -218,7 +211,7 @@ module.exports = {
                   fs
                     .readdirSync(full)
                     .filter((f) => f.toLowerCase().endsWith(".mp3"))
-                    .map((f) => path.join(full, f))
+                    .map((f) => path.join(full, f)),
                 );
               }
             }
@@ -284,18 +277,14 @@ module.exports = {
         });
       }
 
-      const skippedSongName = path
-        .basename(queue[0], ".mp3")
-        .replace(/_/g, " ");
-      const currentSongName = path
-        .basename(queue[1], ".mp3")
-        .replace(/_/g, " ");
+      const skippedSongName = await getSongName(queue[0]);
+      const currentSongName = await getSongName(queue[1]);
       const skipMsg = `⏭️ Skipped: \n**${skippedSongName}** \nNow playing: \n**${currentSongName}**`;
       try {
         await require("../../functions/handlers/handleMusic").sendNotification(
           guildId,
           interaction,
-          skipMsg
+          skipMsg,
         );
       } catch (e) {
         logger.error(`Failed sending skip notification: ${e}`);
@@ -425,10 +414,7 @@ module.exports = {
       const removedSongPath = queue.splice(amount, 1)[0];
       await saveQueue(guildId, queue);
 
-      const removedSongName = path
-        .basename(removedSongPath)
-        .replace(/\.mp3$/, "")
-        .replace(/_/g, " ");
+      const removedSongName = await getSongName(removedSongPath);
 
       try {
         await interaction.reply({

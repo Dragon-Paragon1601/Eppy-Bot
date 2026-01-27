@@ -5,6 +5,7 @@ const {
   getQueueChannel,
   saveQueue,
   firstSongStartedMap,
+  getSongName,
 } = require("../../functions/handlers/handleMusic");
 const { exec, spawn } = require("child_process");
 const { SlashCommandBuilder } = require("discord.js");
@@ -30,7 +31,7 @@ async function getSpotifyTracks(url) {
     const trackId = url.split("track/")[1].split("?")[0];
     const track = await spotifyApi.getTrack(trackId);
     tracks.push(
-      `${track.body.name} ${track.body.artists.map((a) => a.name).join(" ")}`
+      `${track.body.name} ${track.body.artists.map((a) => a.name).join(" ")}`,
     );
   } else if (url.includes("playlist")) {
     const playlistId = url.split("playlist/")[1].split("?")[0];
@@ -50,15 +51,15 @@ async function getSpotifyTracks(url) {
             (item) =>
               `${item.track.name} ${item.track.artists
                 .map((a) => a.name)
-                .join(" ")}`
-          )
+                .join(" ")}`,
+          ),
       );
     }
   } else if (url.includes("album")) {
     const albumId = url.split("album/")[1].split("?")[0];
     const album = await spotifyApi.getAlbumTracks(albumId);
     tracks = album.body.items.map(
-      (track) => `${track.name} ${track.artists.map((a) => a.name).join(" ")}`
+      (track) => `${track.name} ${track.artists.map((a) => a.name).join(" ")}`,
     );
   }
   return tracks;
@@ -72,7 +73,7 @@ module.exports = {
       option
         .setName("find")
         .setDescription("Song name or URL")
-        .setRequired(true)
+        .setRequired(true),
     ),
 
   async execute(interaction) {
@@ -106,7 +107,7 @@ module.exports = {
             term,
             interaction,
             voiceChannel,
-            firstSongStarted
+            firstSongStarted,
           );
           if (!firstSongStarted) {
             firstSongStarted = true;
@@ -145,7 +146,7 @@ module.exports = {
             }
 
             interaction.editReply(
-              `🎵 Found ${videoUrls.length} songs. Downloading one by one...`
+              `🎵 Found ${videoUrls.length} songs. Downloading one by one...`,
             );
 
             for (const videoUrl of videoUrls) {
@@ -154,7 +155,7 @@ module.exports = {
                   videoUrl,
                   interaction,
                   voiceChannel,
-                  firstSongStarted
+                  firstSongStarted,
                 );
                 if (!firstSongStarted && success) {
                   firstSongStarted = true;
@@ -166,14 +167,14 @@ module.exports = {
             }
 
             interaction.channel.send("🎶 Every song added to queue!");
-          }
+          },
         );
       } else {
         await downloadAndQueue(
           find,
           interaction,
           voiceChannel,
-          firstSongStarted
+          firstSongStarted,
         );
         if (!firstSongStarted) {
           firstSongStarted = true;
@@ -194,7 +195,7 @@ async function downloadAndQueue(
   searchTerm,
   interaction,
   voiceChannel,
-  firstSongStarted
+  firstSongStarted,
 ) {
   return new Promise((resolve) => {
     const guildId = interaction.guild.id;
@@ -261,11 +262,11 @@ async function downloadAndQueue(
             interaction.guild.channels.cache.get(queueChannelId) ||
             interaction.channel;
           if (textChannel && addedSongs.length > 0) {
-            const formattedSongs = addedSongs.map((song) =>
-              song.replace(/\.mp3$/, "").replace(/_/g, " ")
+            const formattedSongs = await Promise.all(
+              addedSongs.map((song) => getSongName(song)),
             );
             textChannel.send(
-              `🎵 Added to queue: \n**${formattedSongs.join(", ")}**`
+              `🎵 Added to queue: \n**${formattedSongs.join(", ")}**`,
             );
           }
 

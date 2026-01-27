@@ -7,6 +7,7 @@ const {
   playNext,
   playersStop,
   setLoopSong,
+  getSongName,
 } = require("../../functions/handlers/handleMusic");
 
 const PUSH_FILE = "push.mp3";
@@ -54,7 +55,7 @@ module.exports = {
 
       await playNext(guildId, interaction);
 
-      const songName = path.basename(selectedFile, ".mp3").replace(/_/g, " ");
+      const songName = await getSongName(selectedFile);
       await interaction.editReply({
         content: `🔁 Push started. Playing **${songName}** on loop. Use /queue stop to stop.`,
       });
