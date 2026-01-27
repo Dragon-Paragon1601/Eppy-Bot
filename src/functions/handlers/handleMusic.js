@@ -274,7 +274,7 @@ async function getSongName(songPath) {
     const title = metadata.common?.title;
 
     if (artist && title) {
-      return `${artist} - ${title}`;
+      return `${title} - ${artist}`;
     }
   } catch (err) {
     logger.debug(`Nie można pobrać metadanych dla ${songPath}: ${err}`);
