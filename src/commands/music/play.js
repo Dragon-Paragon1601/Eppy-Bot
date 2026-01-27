@@ -79,15 +79,25 @@ module.exports = {
             }
           }
         }
-        const choices = files
-          .map((f) => path.basename(f).replace(/\.mp3$/i, ""))
-          .filter((c) =>
-            c.toLowerCase().includes((focused || "").toLowerCase()),
-          )
-          .slice(0, 25);
-        return interaction.respond(
-          choices.map((name) => ({ name, value: name })),
+        const choices = await Promise.all(
+          files.map(async (f) => ({
+            filePath: f,
+            displayName: await getSongName(f),
+          })),
+        ).then((results) =>
+          results
+            .filter((c) =>
+              c.displayName
+                .toLowerCase()
+                .includes((focused || "").toLowerCase()),
+            )
+            .slice(0, 25)
+            .map((c) => ({
+              name: c.displayName,
+              value: path.basename(c.filePath).replace(/\.mp3$/i, ""),
+            })),
         );
+        return interaction.respond(choices);
       }
 
       if (focusedName === "playlist") {
