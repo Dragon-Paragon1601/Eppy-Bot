@@ -23,6 +23,7 @@ let queues = {};
 const priorityQueues = {};
 const historyMap = {};
 const currentlyPlayingSource = {}; // 'main' or 'priority'
+const nextTrackInfo = new Map(); // guildId -> { songPath, source: 'priority'|'main' } for display in Idle
 const loopSongMap = new Map();
 const _startingSet = new Set();
 const autoModeMap = new Map();
@@ -187,7 +188,7 @@ function getHistory(guildId) {
   return historyMap[guildId] || [];
 }
 
-// Play previous track: move last history item back to front and play
+// Play previous track from history
 async function playPrevious(guildId, interaction) {
   const history = getHistory(guildId);
 
@@ -201,13 +202,8 @@ async function playPrevious(guildId, interaction) {
     return;
   }
 
-  // Get current track (last in history) and previous (second to last)
-  // Do NOT modify history directly - we'll rebuild it after playback
-  const currentTrack = history[history.length - 1];
+  // Get previous track (second to last in history)
   const previousTrack = history[history.length - 2];
-
-  // Add current track to priority queue so user can go forward again
-  addToPriorityQueue(guildId, currentTrack);
 
   // Stop current playback
   if (players[guildId]) {
@@ -215,15 +211,25 @@ async function playPrevious(guildId, interaction) {
       players[guildId].stop();
     } catch (e) {}
   }
+
+  // Reset playing state
   isPlaying[guildId] = false;
+  _startingSet.delete(guildId);
 
-  // Remove the last item from history (we're going back)
-  historyMap[guildId].pop();
+  // Remove current from history (we're going back)
+  if (historyMap[guildId]) {
+    historyMap[guildId].pop();
+  }
 
-  // Add previous track to front of main queue so playNext picks it
-  let queue = await getQueue(guildId);
-  queue.unshift(previousTrack);
+  // Clear priority queue to avoid interference
+  clearPriorityQueue(guildId);
+
+  // Replace entire queue with previous track at front
+  let queue = [previousTrack];
   await saveQueue(guildId, queue);
+
+  // Set currentlyPlayingSource to main so normal queue shifting happens
+  delete currentlyPlayingSource[guildId];
 
   // Play the previous track
   await playNext(guildId, interaction);
@@ -444,6 +450,17 @@ async function playNext(guildId, interaction) {
       return;
     }
 
+    // Zapamiętaj następny utwór który będzie zagrywany
+    const nextPQueue = getPriorityQueue(guildId);
+    const nextQueue = await getQueue(guildId);
+    let nextTrackData = null;
+    if (nextPQueue && nextPQueue.length > 0) {
+      nextTrackData = { songPath: nextPQueue[0], source: "priority" };
+    } else if (nextQueue && nextQueue.length > 0) {
+      nextTrackData = { songPath: nextQueue[0], source: "main" };
+    }
+    nextTrackInfo.set(guildId, nextTrackData);
+
     isPlaying[guildId] = true;
 
     const resource = createAudioResource(songPath);
@@ -488,18 +505,14 @@ async function playNext(guildId, interaction) {
       players[guildId].once(AudioPlayerStatus.Idle, async () => {
         clearInterval(idleTimers[guildId].progressInterval);
         try {
-          // Get next song info to show in finished message
-          const nextQueue = await getQueue(guildId);
-          const pQueue = getPriorityQueue(guildId);
+          // Get next track info that was cached by playNext()
+          const cachedNextTrack = nextTrackInfo.get(guildId);
           let nextSongName = null;
           let nextSource = null;
 
-          if (pQueue && pQueue.length > 0) {
-            nextSongName = await getSongName(pQueue[0]);
-            nextSource = "priority";
-          } else if (nextQueue && nextQueue.length > 0) {
-            nextSongName = await getSongName(nextQueue[0]);
-            nextSource = "main";
+          if (cachedNextTrack) {
+            nextSongName = await getSongName(cachedNextTrack.songPath);
+            nextSource = cachedNextTrack.source;
           }
 
           let finishedMsg = `🎶 Finished playing: **${songName}**`;
@@ -526,6 +539,8 @@ async function playNext(guildId, interaction) {
         }
         // clear currentlyPlayingSource for guild
         delete currentlyPlayingSource[guildId];
+        // clear next track cache
+        nextTrackInfo.delete(guildId);
         // release starting lock (allow future playNext calls)
         _startingSet.delete(guildId);
         playNext(guildId, interaction);

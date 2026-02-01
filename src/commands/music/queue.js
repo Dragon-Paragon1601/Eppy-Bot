@@ -13,9 +13,6 @@ const {
   pause,
   resume,
 } = require("../../functions/handlers/handleMusic");
-const {
-  clearAudioFolders,
-} = require("../../functions/handlers/handleClearAudio");
 const path = require("path");
 const fs = require("fs");
 const logger = require("../../logger");
@@ -142,17 +139,10 @@ module.exports = {
         await interaction.reply({
           content: "🗑️ Queue cleared!",
         });
-
-        await clearAudioFolders(guildId);
-
-        await interaction.followUp({
-          content: "🗑️ All audio files cleared!",
-        });
       } catch (error) {
         logger.error(`Error clearing queue: ${error}`);
         await interaction.reply({
-          content:
-            "❌ Something went wrong while deleting queue and audio files.",
+          content: "❌ Something went wrong while clearing queue.",
           ephemeral: true,
         });
       }
@@ -313,7 +303,13 @@ module.exports = {
       }
     }
     if (action === "next") {
-      if (!queue || queue.length === 0) {
+      const pQueue = await getPriorityQueue(guildId);
+      
+      // Check if there's something to skip to
+      const hasQueue = queue && queue.length > 0;
+      const hasPriority = pQueue && pQueue.length > 1; // at least 2 items in priority to skip one
+      
+      if (!hasQueue && !hasPriority) {
         return interaction.reply({
           content: "🚫 Queue is empty!",
           ephemeral: true,
@@ -322,15 +318,32 @@ module.exports = {
 
       isPlay(guildId);
 
-      if (queue.length === 0) {
-        return interaction.reply({
-          content: `⏭️ Skipped **${skippedSong}**, but queue is now empty!`,
-        });
+      // Determine what we're skipping and what's next
+      let skippedSongName = null;
+      let currentSongName = null;
+      
+      // If priority queue has items, skip from there
+      if (pQueue && pQueue.length > 0) {
+        skippedSongName = await getSongName(pQueue[0]);
+        // Next is either another priority item or main queue
+        if (pQueue.length > 1) {
+          currentSongName = await getSongName(pQueue[1]);
+        } else if (hasQueue) {
+          currentSongName = await getSongName(queue[0]);
+        }
+      } else if (hasQueue) {
+        // Skip from main queue
+        skippedSongName = await getSongName(queue[0]);
+        currentSongName = queue[1] ? await getSongName(queue[1]) : null;
       }
 
-      const skippedSongName = await getSongName(queue[0]);
-      const currentSongName = await getSongName(queue[1]);
-      const skipMsg = `⏭️ Skipped: \n**${skippedSongName}** \nNow playing: \n**${currentSongName}**`;
+      let skipMsg = `⏭️ Skipped: **${skippedSongName}**`;
+      if (currentSongName) {
+        skipMsg += `\n⏭️ Next: **${currentSongName}**`;
+      } else {
+        skipMsg += `\n⏭️ Queue is now empty!`;
+      }
+      
       try {
         await require("../../functions/handlers/handleMusic").sendNotification(
           guildId,
@@ -340,6 +353,7 @@ module.exports = {
       } catch (e) {
         logger.error(`Failed sending skip notification: ${e}`);
       }
+      
       await interaction.reply({
         content: "⏭️ Skipped to next track.",
         ephemeral: true,

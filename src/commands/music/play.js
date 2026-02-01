@@ -164,12 +164,6 @@ module.exports = {
       if (isPlay(guildId)) {
         const songName = await getSongName(filePath);
         await addToPriorityQueue(guildId, filePath);
-        const notifyMsg = `⏭️ Playing next: **${songName}**`;
-        try {
-          await sendNotification(guildId, interaction, notifyMsg);
-        } catch (e) {
-          logger.error(`Failed sending add-to-queue notification: ${e}`);
-        }
         return interaction.reply({
           content: `⏭️ Playing next: **${songName}**`,
           ephemeral: true,
