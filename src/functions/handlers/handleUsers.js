@@ -3,17 +3,17 @@ const logger = require("../../logger");
 
 async function saveAllGuildUsers(guild) {
   if (!guild) {
-    logger.error("[ERROR] Brak guild - przerwano zapis.");
+    logger.error("[ERROR] No guild provided - aborting save.");
     return;
   }
 
   try {
-    const members = await guild.members.fetch(); // Pobieramy wszystkich członków
+    const members = await guild.members.fetch(); // Fetch all members
 
     for (const member of members.values()) {
       let adminPrem = 0;
 
-      // Określenie uprawnień użytkownika
+      // Determine user permissions
       if (member.permissions.has("Administrator")) {
         adminPrem = 8;
       } else if (member.permissions.has("ManageGuild")) {
@@ -22,18 +22,21 @@ async function saveAllGuildUsers(guild) {
         adminPrem = 4;
       }
 
-      // Sprawdzamy, czy użytkownik już istnieje w bazie danych
-      const existingUser = await User.findOne({ guild_id: guild.id, user_id: member.id });
+      // Check if the user already exists in the database
+      const existingUser = await User.findOne({
+        guild_id: guild.id,
+        user_id: member.id,
+      });
 
       if (existingUser) {
-        // Jeśli użytkownik istnieje, zaktualizuj dane
+        // If the user exists, update the data
         existingUser.admin_prem = adminPrem;
         existingUser.username = member.user.username;
         existingUser.guild_name = guild.name; // Aktualizujemy nazwę serwera
         existingUser.guild_icon = guild.iconURL() || null; // Aktualizujemy ikonę serwera
         await existingUser.save();
       } else {
-        // Jeśli użytkownik nie istnieje, dodaj nowego użytkownika
+        // If the user does not exist, add a new user
         const newUser = new User({
           guild_id: guild.id,
           user_id: member.id,
@@ -46,7 +49,7 @@ async function saveAllGuildUsers(guild) {
       }
     }
   } catch (error) {
-    logger.error("[ERROR] Błąd podczas zapisu użytkowników do MongoDB:", error);
+    logger.error("[ERROR] Error saving users to MongoDB:", error);
   }
 }
 

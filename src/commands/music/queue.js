@@ -8,6 +8,10 @@ const {
   playersStop,
   clearQueue,
   getSongName,
+  getPriorityQueue,
+  playPrevious,
+  pause,
+  resume,
 } = require("../../functions/handlers/handleMusic");
 const {
   clearAudioFolders,
@@ -29,13 +33,14 @@ module.exports = {
         .setDescription("Choose action to perform on the queue")
         .setRequired(true)
         .addChoices(
-          { name: "play", value: "play" },
           { name: "queue", value: "queue" },
           { name: "auto", value: "auto" },
           { name: "clear", value: "clear" },
           { name: "resume", value: "resume" },
           { name: "skip", value: "skip" },
           { name: "shuffle", value: "shuffle" },
+          { name: "previous", value: "previous" },
+          { name: "pause", value: "pause" },
           { name: "skipto", value: "skipto" },
           { name: "stop", value: "stop" },
           { name: "unplay", value: "unplay" },
@@ -78,10 +83,12 @@ module.exports = {
         }
       }
 
+      const pQueue = await getPriorityQueue(guildId);
       const displayedQueue = await Promise.all(
         queue.slice(0, 25).map(async (file, index) => {
           const songName = await getSongName(file);
-          return `\`${index + 1}.\` **${songName}**`;
+          const isPriority = pQueue && pQueue.includes(file);
+          return `\`${index + 1}.\` ${isPriority ? "⭐" : ""} **${songName}**`;
         }),
       ).then((results) => results.join("\n"));
 
@@ -101,8 +108,6 @@ module.exports = {
         return null;
       }
     }
-
-    // play action removed: use `/play` command to add specific tracks
 
     if (action === "clear") {
       try {
@@ -164,6 +169,35 @@ module.exports = {
       return interaction.reply({
         content: `🔀 Queue shuffled!\n\n${queueMessage}`,
       });
+    }
+
+    if (action === "previous") {
+      try {
+        await playPrevious(guildId, interaction);
+      } catch (err) {
+        logger.error(`Failed previous: ${err}`);
+        return interaction.reply({
+          content: `❌ Error: ${err.message}`,
+          ephemeral: true,
+        });
+      }
+      return;
+    }
+
+    if (action === "pause") {
+      try {
+        const ok = pause(guildId);
+        return interaction.reply({
+          content: ok ? "⏸️ Paused." : "❌ Can't pause.",
+          ephemeral: true,
+        });
+      } catch (err) {
+        logger.error(`Pause error: ${err}`);
+        return interaction.reply({
+          content: `❌ Error: ${err.message}`,
+          ephemeral: true,
+        });
+      }
     }
 
     if (action === "auto") {
@@ -426,6 +460,18 @@ module.exports = {
     }
 
     if (action === "resume") {
+      // Try unpausing if possible, otherwise start playback
+      try {
+        const resumed = resume(guildId);
+        if (resumed)
+          return interaction.reply({
+            content: "▶️ Resumed playback.",
+            ephemeral: true,
+          });
+      } catch (e) {
+        logger.error(`Resume attempt failed: ${e}`);
+      }
+
       await interaction.deferReply();
 
       if (!queue || queue.length === 0) {

@@ -20,6 +20,9 @@ let idleTimers = {};
 let isPlaying = {};
 let players = {};
 let queues = {};
+const priorityQueues = {};
+const historyMap = {};
+const currentlyPlayingSource = {}; // 'main' or 'priority'
 const loopSongMap = new Map();
 const _startingSet = new Set();
 const autoModeMap = new Map();
@@ -29,7 +32,7 @@ const loopSourceMap = new Map();
 const playlistMap = new Map(); // guildId -> playlist name
 const randomTypeMap = new Map(); // guildId -> 'off'|'from_playlist'|'playlist'|'all'
 
-// Sprawdź czy pierwsza piosenka została rozpoczęta
+// Check if the first song was started
 function checkFirstSongStarted(guildId) {
   if (!firstSongStartedMap.has(guildId)) {
     firstSongStartedMap.set(guildId, false);
@@ -37,14 +40,12 @@ function checkFirstSongStarted(guildId) {
   return firstSongStartedMap.get(guildId);
 }
 
-// Pobierz kolejkę dla danej gildii
+// Get the queue for a guild
 async function getQueue(guildId) {
   let queue = await Queue.findOne({ guildId });
   if (!queue) {
     queue = new Queue({ guildId, songs: [] });
-    await queue
-      .save()
-      .catch((err) => logger.error(`Błąd zapisu kolejki: ${err}`));
+    await queue.save().catch((err) => logger.error(`Queue save error: ${err}`));
   }
   return queue.songs;
 }
@@ -147,7 +148,7 @@ function getLoopSource(guildId) {
   return loopSourceMap.get(guildId);
 }
 
-// Zapisz kolejkę dla danej gildii
+// Save the queue for a guild
 async function saveQueue(guildId, queue) {
   let queueDoc = await Queue.findOne({ guildId });
   if (!queueDoc) {
@@ -157,7 +158,94 @@ async function saveQueue(guildId, queue) {
   }
   await queueDoc
     .save()
-    .catch((err) => logger.error(`Błąd zapisu kolejki: ${err}`));
+    .catch((err) => logger.error(`Queue save error: ${err}`));
+}
+
+// Priority queue: songs that should be played next (not persisted)
+function addToPriorityQueue(guildId, songPath) {
+  if (!priorityQueues[guildId]) priorityQueues[guildId] = [];
+  // add to end (FIFO)
+  priorityQueues[guildId].push(songPath);
+}
+
+function getPriorityQueue(guildId) {
+  return priorityQueues[guildId] || [];
+}
+
+function clearPriorityQueue(guildId) {
+  if (priorityQueues[guildId]) priorityQueues[guildId] = [];
+}
+
+function pushHistory(guildId, songPath) {
+  if (!historyMap[guildId]) historyMap[guildId] = [];
+  historyMap[guildId].push(songPath);
+  // limit history to 200
+  if (historyMap[guildId].length > 200) historyMap[guildId].shift();
+}
+
+function getHistory(guildId) {
+  return historyMap[guildId] || [];
+}
+
+// Play previous track: move last history item back to front and play
+async function playPrevious(guildId, interaction) {
+  const history = getHistory(guildId);
+  if (history.length < 2) {
+    // Not enough history to go back
+    if (interaction && interaction.reply)
+      return interaction.reply({
+        content: "🚫 No previous track.",
+        ephemeral: true,
+      });
+    return;
+  }
+
+  // Remove current playing (last) and get previous
+  const current = history.pop();
+  const prev = history.pop();
+
+  // Put current back to front of main queue
+  let queue = await getQueue(guildId);
+  queue.unshift(current);
+  await saveQueue(guildId, queue);
+
+  // Put prev to front so playNext picks it
+  queue = await getQueue(guildId);
+  queue.unshift(prev);
+  await saveQueue(guildId, queue);
+
+  // stop current and play next (which is prev)
+  if (players[guildId]) {
+    try {
+      players[guildId].stop();
+    } catch (e) {}
+  }
+  isPlaying[guildId] = false;
+  await playNext(guildId, interaction);
+}
+
+function pause(guildId) {
+  if (players[guildId] && typeof players[guildId].pause === "function") {
+    try {
+      players[guildId].pause();
+      return true;
+    } catch (e) {
+      logger.error(`pause error for ${guildId}: ${e}`);
+    }
+  }
+  return false;
+}
+
+function resume(guildId) {
+  if (players[guildId] && typeof players[guildId].unpause === "function") {
+    try {
+      players[guildId].unpause();
+      return true;
+    } catch (e) {
+      logger.error(`resume error for ${guildId}: ${e}`);
+    }
+  }
+  return false;
 }
 
 // Dodaj piosenkę do kolejki
@@ -172,12 +260,12 @@ async function addToQueueNext(guildId, songPath) {
   queue.splice(1, 0, songPath);
   await saveQueue(guildId, queue);
 }
-// Wyczyść kolejkę dla danej gildii
+// Clear the queue for a guild
 async function clearQueue(guildId) {
   await saveQueue(guildId, []);
 }
 
-// Przetasuj kolejkę dla danej gildii
+// Shuffle the queue for a guild
 async function shuffleQueue(guildId, shuffleTimes = 10) {
   let queue = await getQueue(guildId);
   if (!queue || queue.length < 3) return;
@@ -203,11 +291,11 @@ function playersStop(guildId) {
   players[guildId].play(emptyResource);
 }
 
-// Sprawdź czy kolejka jest pusta
+// Check if the queue is empty
 async function queueEmpty(guildId, interaction) {
   let emptyCheck = await getQueue(guildId);
   if (emptyCheck.length === 0) {
-    logger.debug(`🚫 Kolejka dla gildii ${guildId} jest pusta.`);
+    logger.debug(`🚫 Queue for guild ${guildId} is empty.`);
     // If loop mode for whole queue is enabled and we have a stored source, refill the queue
     if (
       loopQueueMap.get(guildId) &&
@@ -217,7 +305,7 @@ async function queueEmpty(guildId, interaction) {
       const source = loopSourceMap.get(guildId);
       await saveQueue(guildId, [...source]);
       logger.debug(
-        `🔁 Looping queue for gildii ${guildId}. Refilled ${source.length} tracks.`,
+        `🔁 Looping queue for guild ${guildId}. Refilled ${source.length} tracks.`,
       );
       playNext(guildId, interaction);
       return;
@@ -232,7 +320,7 @@ async function queueEmpty(guildId, interaction) {
       if (!queues[guildId]?.length && connections[guildId]) {
         connections[guildId].destroy();
         delete connections[guildId];
-        logger.debug(`⏹️ Bot rozłączony z ${guildId} z powodu braku muzyki.`);
+        logger.debug(`⏹️ Bot disconnected from ${guildId} due to no music.`);
       }
     }, 180000);
     return;
@@ -261,7 +349,7 @@ async function getSongDuration(songPath) {
     const metadata = await mm.parseFile(songPath);
     return metadata.format.duration * 1000;
   } catch (err) {
-    logger.error(`Błąd pobierania metadanych dla ${songPath}: ${err}`);
+    logger.error(`Error fetching metadata for ${songPath}: ${err}`);
     return 0;
   }
 }
@@ -277,7 +365,7 @@ async function getSongName(songPath) {
       return `${title} - ${artist}`;
     }
   } catch (err) {
-    logger.debug(`Nie można pobrać metadanych dla ${songPath}: ${err}`);
+    logger.debug(`Unable to fetch metadata for ${songPath}: ${err}`);
   }
 
   // Fallback do nazwy pliku
@@ -303,7 +391,7 @@ async function playNext(guildId, interaction) {
 
     const voiceChannel = interaction.member.voice.channel;
     if (!voiceChannel) {
-      logger.debug(`🚫 Użytkownik opuścił kanał głosowy. Bot rozłącza się.`);
+      logger.debug(`🚫 User left voice channel. Bot disconnecting.`);
       connections[guildId]?.destroy();
       delete connections[guildId];
       return;
@@ -331,16 +419,23 @@ async function playNext(guildId, interaction) {
 
     if (!connections[guildId]) {
       logger.error(
-        `❌ Błąd: Bot nie mógł dołączyć do kanału głosowego na serwerze ${guildId}`,
+        `❌ Error: Bot couldn't join the voice channel on server ${guildId}`,
       );
       return;
     }
 
-    const songPath = queue[0];
+    // choose next song: priority queue takes precedence
+    let songPath;
+    const pQueue = getPriorityQueue(guildId);
+    if (pQueue && pQueue.length > 0) {
+      songPath = pQueue.shift();
+      currentlyPlayingSource[guildId] = "priority";
+    } else {
+      songPath = queue[0];
+      currentlyPlayingSource[guildId] = "main";
+    }
     if (!songPath) {
-      logger.error(
-        `🚫 Błąd: Brak poprawnego utworu do odtworzenia dla ${guildId}`,
-      );
+      logger.error(`🚫 Error: No valid track to play for ${guildId}`);
       return;
     }
 
@@ -354,6 +449,8 @@ async function playNext(guildId, interaction) {
     const songName = await getSongName(songPath);
 
     logger.info(`🎵 Odtwarzanie dla ${guildId}: ${songName}`);
+    // record played song in history (for back navigation)
+    pushHistory(guildId, songPath);
     const sentMessage = await sendNotification(
       guildId,
       interaction,
@@ -394,14 +491,17 @@ async function playNext(guildId, interaction) {
         firstSongStartedMap.set(guildId, false);
         queue = await getQueue(guildId);
         const loopSong = loopSongMap.get(guildId);
-        if (!loopSong || loopSong !== songPath) {
-          if (queue.length > 0) {
-            queue.shift();
-            await saveQueue(guildId, queue);
+        // if the song was from main queue and not looped single-song, shift it
+        if (currentlyPlayingSource[guildId] === "main") {
+          if (!loopSong || loopSong !== songPath) {
+            if (queue.length > 0) {
+              queue.shift();
+              await saveQueue(guildId, queue);
+            }
           }
-        } else {
-          // For a looped song we don't shift the queue so it stays as the first item and will play again
         }
+        // clear currentlyPlayingSource for guild
+        delete currentlyPlayingSource[guildId];
         // release starting lock (allow future playNext calls)
         _startingSet.delete(guildId);
         playNext(guildId, interaction);
@@ -415,12 +515,15 @@ async function playNext(guildId, interaction) {
         firstSongStartedMap.set(guildId, false);
         queue = await getQueue(guildId);
         const loopSong = loopSongMap.get(guildId);
-        if (!loopSong || loopSong !== songPath) {
-          if (queue.length > 0) {
-            queue.shift();
-            await saveQueue(guildId, queue);
+        if (currentlyPlayingSource[guildId] === "main") {
+          if (!loopSong || loopSong !== songPath) {
+            if (queue.length > 0) {
+              queue.shift();
+              await saveQueue(guildId, queue);
+            }
           }
         }
+        delete currentlyPlayingSource[guildId];
         // ensure we don't start concurrently
         if (!_startingSet.has(guildId)) playNext(guildId, interaction);
       });
@@ -433,7 +536,7 @@ async function playNext(guildId, interaction) {
   }
 }
 
-// Pobierz kanał kolejki dla danej gildii
+// Get the queue channel for a guild
 async function getQueueChannel(guildId) {
   const query = "SELECT * FROM queue_channels WHERE guild_id = ?";
   try {
@@ -452,7 +555,7 @@ async function getQueueChannel(guildId) {
       return null;
     }
   } catch (err) {
-    console.error("Błąd zapytania:", err);
+    console.error("Query error:", err);
     throw err;
   }
 }
@@ -600,6 +703,13 @@ module.exports = {
   startPlaying,
   getQueueChannel,
   shuffleQueue,
+  addToPriorityQueue,
+  getPriorityQueue,
+  clearPriorityQueue,
+  playPrevious,
+  pause,
+  resume,
+  getHistory,
   isPlay,
   playersStop,
   connections,

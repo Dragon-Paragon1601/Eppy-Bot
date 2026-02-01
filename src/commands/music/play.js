@@ -14,6 +14,7 @@ const {
   listPlaylists,
   listPlaylistTracks,
   getSongName,
+  addToPriorityQueue,
 } = require("../../functions/handlers/handleMusic");
 
 module.exports = {
@@ -159,10 +160,10 @@ module.exports = {
           ephemeral: true,
         });
 
-      // Use existing queue logic: single tracks are always added as next
+      // Use existing queue logic: when something is playing, add to priority queue (play next)
       if (isPlay(guildId)) {
         const songName = await getSongName(filePath);
-        await addToQueueNext(guildId, filePath);
+        await addToPriorityQueue(guildId, filePath);
         const notifyMsg = `⏭️ Playing next: **${songName}**`;
         try {
           await sendNotification(guildId, interaction, notifyMsg);

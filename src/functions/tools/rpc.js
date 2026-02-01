@@ -5,24 +5,26 @@ const rpc = new RPC.Client({ transport: "ipc" });
 const clientId = config.client_ID;
 
 async function setActivity() {
-    if (!rpc) return;
+  if (!rpc) return;
 
-    rpc.setActivity({
-        details: "Programming",  
-        state: "Eppy Bot (1 z 1)",
-        startTimestamp: Date.now(), 
-        largeImageKey: "eppy", 
-        largeImageText: "Eppy", 
-        smallImageKey: "verified", 
-        smallImageText: "Verified",
-        instance: false,
-    });
-    logger.debug("Activity reset to default.");
+  rpc.setActivity({
+    details: "Programming",
+    state: "Eppy Bot (1 of 1)",
+    startTimestamp: Date.now(),
+    largeImageKey: "eppy",
+    largeImageText: "Eppy",
+    smallImageKey: "verified",
+    smallImageText: "Verified",
+    instance: false,
+  });
+  logger.debug("Activity reset to default.");
 }
 
 rpc.on("ready", () => {
-    logger.info("✅ Rich Presence aktywne!");
-    setActivity();
+  logger.info("✅ Rich Presence active!");
+  setActivity();
 });
 
-rpc.login({ clientId }).catch(err => logger.error(`Błąd z rpc clientId: ${err}`));
+rpc
+  .login({ clientId })
+  .catch((err) => logger.error(`RPC clientId error: ${err}`));
