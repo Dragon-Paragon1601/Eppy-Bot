@@ -216,11 +216,6 @@ async function playPrevious(guildId, interaction) {
   isPlaying[guildId] = false;
   _startingSet.delete(guildId);
 
-  // Remove current from history (we're going back)
-  if (historyMap[guildId]) {
-    historyMap[guildId].pop();
-  }
-
   // Clear priority queue to avoid interference
   clearPriorityQueue(guildId);
 
