@@ -304,11 +304,13 @@ module.exports = {
     }
     if (action === "next") {
       const pQueue = await getPriorityQueue(guildId);
-      
+      const { getHistory } = require("../../functions/handlers/handleMusic");
+      const history = getHistory(guildId);
+
       // Check if there's something to skip to
       const hasQueue = queue && queue.length > 0;
-      const hasPriority = pQueue && pQueue.length > 1; // at least 2 items in priority to skip one
-      
+      const hasPriority = pQueue && pQueue.length > 0;
+
       if (!hasQueue && !hasPriority) {
         return interaction.reply({
           content: "🚫 Queue is empty!",
@@ -318,32 +320,27 @@ module.exports = {
 
       isPlay(guildId);
 
-      // Determine what we're skipping and what's next
+      // Get currently playing track from history (last item)
       let skippedSongName = null;
-      let currentSongName = null;
-      
-      // If priority queue has items, skip from there
-      if (pQueue && pQueue.length > 0) {
-        skippedSongName = await getSongName(pQueue[0]);
-        // Next is either another priority item or main queue
-        if (pQueue.length > 1) {
-          currentSongName = await getSongName(pQueue[1]);
-        } else if (hasQueue) {
-          currentSongName = await getSongName(queue[0]);
-        }
-      } else if (hasQueue) {
-        // Skip from main queue
-        skippedSongName = await getSongName(queue[0]);
-        currentSongName = queue[1] ? await getSongName(queue[1]) : null;
+      if (history && history.length > 0) {
+        skippedSongName = await getSongName(history[history.length - 1]);
       }
 
-      let skipMsg = `⏭️ Skipped: **${skippedSongName}**`;
+      // Determine what's next
+      let currentSongName = null;
+      if (pQueue && pQueue.length > 0) {
+        currentSongName = await getSongName(pQueue[0]);
+      } else if (hasQueue) {
+        currentSongName = await getSongName(queue[0]);
+      }
+
+      let skipMsg = `⏭️ Skipped: **${skippedSongName || "Unknown"}**`;
       if (currentSongName) {
         skipMsg += `\n⏭️ Next: **${currentSongName}**`;
       } else {
         skipMsg += `\n⏭️ Queue is now empty!`;
       }
-      
+
       try {
         await require("../../functions/handlers/handleMusic").sendNotification(
           guildId,
@@ -353,7 +350,7 @@ module.exports = {
       } catch (e) {
         logger.error(`Failed sending skip notification: ${e}`);
       }
-      
+
       await interaction.reply({
         content: "⏭️ Skipped to next track.",
         ephemeral: true,
@@ -374,29 +371,54 @@ module.exports = {
           ephemeral: true,
         });
       }
-      const amountRaw = interaction.options.getInteger("index");
-      const amount = amountRaw - 2;
-      if (!queue || queue.length === 0) {
+
+      const pQueue = await getPriorityQueue(guildId);
+      const indexRaw = interaction.options.getInteger("index");
+
+      // Total queue size = priority queue size + main queue size
+      const prioritySize = pQueue ? pQueue.length : 0;
+      const totalSize = prioritySize + (queue ? queue.length : 0);
+
+      if (totalSize === 0) {
         return interaction.reply({
           content: "🚫 Queue is empty!",
           ephemeral: true,
         });
       }
 
-      if (amount <= 0 || amount >= queue.length) {
+      // Validate index (1-based from user perspective)
+      if (indexRaw < 1 || indexRaw > totalSize) {
         return interaction.reply({
-          content: "🚫 Wrong song number!",
+          content: `🚫 Wrong song number! Queue has ${totalSize} songs.`,
           ephemeral: true,
         });
       }
 
       isPlay(guildId);
-      queue.splice(0, amount);
-      await saveQueue(guildId, queue);
+
+      // Index 1 is current song, so we skip to index (user wants index-1 in 0-based)
+      const targetIndex = indexRaw - 1;
+
+      if (targetIndex <= prioritySize) {
+        // Skip within priority queue
+        const skipAmount = targetIndex - 1; // -1 because we keep current
+        if (skipAmount > 0 && pQueue) {
+          pQueue.splice(0, skipAmount);
+        }
+      } else {
+        // Skip into main queue - need to account for priority queue
+        // Main queue index = targetIndex - prioritySize - 1
+        const mainQueueTarget = targetIndex - prioritySize - 1;
+        if (queue && mainQueueTarget > 0) {
+          queue.splice(0, mainQueueTarget);
+          await saveQueue(guildId, queue);
+        }
+      }
 
       try {
         await interaction.reply({
-          content: `⏭️ Skipped to songs: **${amount}**.`,
+          content: `⏭️ Skipped to song ${indexRaw}.`,
+          ephemeral: true,
         });
       } catch (err) {
         logger.error(`Failed to reply skipto: ${err}`);
