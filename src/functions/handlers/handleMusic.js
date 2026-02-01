@@ -224,8 +224,9 @@ async function playPrevious(guildId, interaction) {
   // Clear priority queue to avoid interference
   clearPriorityQueue(guildId);
 
-  // Replace entire queue with previous track at front
-  let queue = [previousTrack];
+  // Add previous track to front of queue (keep rest intact)
+  let queue = await getQueue(guildId);
+  queue.unshift(previousTrack);
   await saveQueue(guildId, queue);
 
   // Set currentlyPlayingSource to main so normal queue shifting happens

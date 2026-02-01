@@ -227,7 +227,7 @@ module.exports = {
         }
 
         // Otherwise (value === true OR value === null) -> enable auto immediately
-        // enable auto: build up to 150 tracks from non-playlist sources, or use full playlist if one is selected
+        // enable auto: load all available tracks from non-playlist sources, or use full playlist if one is selected
         const playlist = musicHandler.getPlaylist(guildId);
         let tracks = [];
         const musicDir = path.join(__dirname, "music");
@@ -275,11 +275,6 @@ module.exports = {
           musicHandler.setRandomMode(guildId, true);
         } else {
           musicHandler.setRandomMode(guildId, false);
-        }
-
-        // if not using a playlist, limit to 150 tracks AFTER optional shuffle
-        if (!playlist) {
-          tracks = tracks.slice(0, 150);
         }
 
         await saveQueue(guildId, tracks);
