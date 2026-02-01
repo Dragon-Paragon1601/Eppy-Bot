@@ -242,7 +242,6 @@ function pause(guildId) {
   }
   return false;
 }
-
 function resume(guildId) {
   if (players[guildId] && typeof players[guildId].unpause === "function") {
     try {
