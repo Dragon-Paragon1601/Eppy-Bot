@@ -33,16 +33,16 @@ module.exports = {
         .setDescription("Choose action to perform on the queue")
         .setRequired(true)
         .addChoices(
-          { name: "queue", value: "queue" },
           { name: "auto", value: "auto" },
+          { name: "queue", value: "queue" },
           { name: "clear", value: "clear" },
-          { name: "resume", value: "resume" },
-          { name: "skip", value: "skip" },
-          { name: "shuffle", value: "shuffle" },
+          { name: "next", value: "next" },
           { name: "previous", value: "previous" },
+          { name: "shuffle", value: "shuffle" },
           { name: "pause", value: "pause" },
-          { name: "skipto", value: "skipto" },
+          { name: "resume", value: "resume" },
           { name: "stop", value: "stop" },
+          { name: "skipto", value: "skipto" },
           { name: "unplay", value: "unplay" },
         ),
     )
@@ -72,32 +72,49 @@ module.exports = {
     const voiceChannel = interaction.member.voice.channel;
 
     if (action === "queue") {
-      if (!queue || queue.length === 0) {
-        try {
-          return await interaction.reply({
-            content: "🎵 Queue is now empty.",
-          });
-        } catch (err) {
-          logger.error(`Failed to send queue empty reply: ${err}`);
-          return null;
+      const pQueue = await getPriorityQueue(guildId);
+
+      let queueMessage = "";
+
+      // Display priority queue first if it exists
+      if (pQueue && pQueue.length > 0) {
+        const priorityDisplay = await Promise.all(
+          pQueue.slice(0, 25).map(async (file, index) => {
+            const songName = await getSongName(file);
+            return `\`${index + 1}.\` ⭐ **${songName}**`;
+          }),
+        ).then((results) => results.join("\n"));
+
+        queueMessage += `⭐ **Priority Queue:**\n${priorityDisplay}`;
+        if (pQueue.length > 25) {
+          queueMessage += `\n...and **${pQueue.length - 25}** more priority songs!\n\n`;
+        } else {
+          queueMessage += "\n\n";
         }
       }
 
-      const pQueue = await getPriorityQueue(guildId);
-      const displayedQueue = await Promise.all(
-        queue.slice(0, 25).map(async (file, index) => {
-          const songName = await getSongName(file);
-          const isPriority = pQueue && pQueue.includes(file);
-          return `\`${index + 1}.\` ${isPriority ? "⭐" : ""} **${songName}**`;
-        }),
-      ).then((results) => results.join("\n"));
+      // Display main queue
+      if (!queue || queue.length === 0) {
+        if (pQueue && pQueue.length > 0) {
+          queueMessage += "📁 **Main Queue:** (empty)";
+        } else {
+          return await interaction.reply({
+            content: "🎵 Queue is now empty.",
+          });
+        }
+      } else {
+        const displayedQueue = await Promise.all(
+          queue.slice(0, 25).map(async (file, index) => {
+            const songName = await getSongName(file);
+            return `\`${index + 1}.\` **${songName}**`;
+          }),
+        ).then((results) => results.join("\n"));
 
-      const queueMessage =
-        queue.length > 25
-          ? `📁 **Current queue:**\n${displayedQueue}\n...and **${
-              queue.length - 25
-            }** more songs!`
-          : `📁 **Current queue:**\n${displayedQueue}`;
+        queueMessage += `📁 **Main Queue:**\n${displayedQueue}`;
+        if (queue.length > 25) {
+          queueMessage += `\n...and **${queue.length - 25}** more songs!`;
+        }
+      }
 
       try {
         return await interaction.reply({
@@ -295,7 +312,7 @@ module.exports = {
         });
       }
     }
-    if (action === "skip") {
+    if (action === "next") {
       if (!queue || queue.length === 0) {
         return interaction.reply({
           content: "🚫 Queue is empty!",

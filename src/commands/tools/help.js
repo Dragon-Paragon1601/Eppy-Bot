@@ -8,50 +8,90 @@ const {
 } = require("discord.js");
 
 const pages = () => {
+  const intro = new EmbedBuilder()
+    .setTitle("Eppy-Bot")
+    .setColor(0x00cc99)
+    .setDescription(
+      "**About**\nEppy-Bot — a lightweight music and moderation assistant for Discord.\n\n" +
+        "**Creator**: Dragon-Paragon1601\n" +
+        "**Source / Issues**: https://github.com/Dragon-Paragon1601/Eppy-Bot/issues\n" +
+        "**Support & Contact**: open an issue on the repository for feature requests or bug reports.\n\n" +
+        "Use the categories below to browse and read detailed command docs.",
+    );
+
   const music = new EmbedBuilder()
-    .setTitle("Music Commands")
+    .setTitle("Music Commands — details")
     .setColor(0x1db954)
     .setDescription(
-      "**/play <track> [playlist]**\nPlay a track or set a playlist. If nothing is playing the track starts immediately. If something is playing, the track is added to the priority queue (it will play after the current track).\n\n" +
-        "**/queue <action>**\nManage or view the queue. Actions: `queue`, `auto`, `clear`, `resume`, `skip`, `skipto`, `shuffle`, `previous`, `pause`, `stop`, `unplay`. Priority items are marked with ⭐.\n\n" +
-        "**/push**\nPlay a short push clip on loop (internal alert clip).",
+      "**/play <track> [playlist]**\nDescription: Play a track or set the active playlist.\nBehavior:\n" +
+        "- If nothing is playing, the provided track starts immediately.\n" +
+        "- If something is playing, the provided track is added to the *priority queue* (FIFO) and will play after the current track finishes.\n\n" +
+        "**/queue <action> [options]** — Detailed usage:\n" +
+        "- `queue` — show the current queue (first 25 entries). Priority items are marked with ⭐ next to the item.\n" +
+        "- `auto [value:boolean] [random:boolean]` — enable/disable auto-play; `random:true` will randomly shuffle selection. Example: `/queue auto value:true random:true`.\n" +
+        "- `clear` — clear main queue and remove cached audio files. Example: `/queue clear`.\n" +
+        "- `resume` — unpause playback if paused; if stopped and queue exists, starts playback. Example: `/queue resume`.\n" +
+        "- `pause` — pause current playback. Example: `/queue pause`.\n" +
+        "- `next` — skip current track to next (priority considered). Example: `/queue next`.\n" +
+        "- `skipto <index>` — skip ahead to a specific queue position (1-based index). Example: `/queue skipto index:5`.\n" +
+        "- `shuffle` — shuffle the main queue (priority queue is not shuffled). Example: `/queue shuffle`.\n" +
+        "- `previous` — play the previous track from history (if available). Example: `/queue previous`.\n" +
+        "- `stop` — stop playback and disconnect bot from voice. Example: `/queue stop`.\n" +
+        "- `unplay <index>` — remove a queued track by its number: `/queue unplay index:3`.\n\n" +
+        "Priority queue behavior:\n" +
+        "- Priority queue holds tracks added while something is playing.\n" +
+        "- It is FIFO: items play in the order they were added.\n" +
+        "- After the current track ends, the bot will play all priority items before resuming the main queue.\n" +
+        "- Priority queue is in-memory and will be lost if the bot restarts.",
     );
 
   const moderation = new EmbedBuilder()
-    .setTitle("Moderation Commands")
+    .setTitle("Moderation Commands — details")
     .setColor(0xff6b6b)
     .setDescription(
-      "**/ban**, **/kick**, **/clear**, **/restart**, **/settings**\nThese commands manage server members and bot settings. Ensure you have proper permissions before using them.",
+      "**/ban <target> [time] [reason]**\n" +
+        "- Description: Ban a member from the server. Requires `Ban Members` permission.\n" +
+        "- Options: `target` (user, required), `time` (integer days 1–7 to delete messages), `reason` (optional).\n" +
+        "- Notes: The bot will attempt to DM the user before banning. If you lack permission or the bot lacks ban power, the action will fail. Example: `/ban target:@user time:2 reason:spamming`.\n\n" +
+        "**/kick <target> [reason]**\n" +
+        "- Description: Kick a member from the server. Requires `Kick Members` permission.\n" +
+        "- Options: `target` (user, required), `reason` (optional). Example: `/kick target:@user reason:rule violation`.\n\n" +
+        "**/clear [amount]**\n" +
+        "- Description: Bulk-delete messages in the current channel. Requires `Manage Messages`.\n" +
+        "- Options: `amount` (integer 1–100). If omitted, deletes messages in batches until channel is cleared.\n" +
+        "- Notes: Discord prevents bulk-deleting messages older than 14 days; the command will report that in errors. Example: `/clear amount:50`.\n\n" +
+        "**/restart**\n" +
+        "- Description: Restart the bot process. Restricted to repository `allowUsers` (configured via env).\n" +
+        "- Notes: Executes `pm2 restart Eppy` in the configured environment. Use only when necessary. Example: `/restart` (admin/allowlist only).\n\n" +
+        "**/settings**\n" +
+        "- Description: Configure server channels and mappings (Admin or allowlisted users).\n" +
+        "- Options: `queue_channel`, `notification_channel`, `welcome_channel` (text channels) or boolean clears: `clear_queue_channel`, `clear_notification_channel`, `clear_welcome_channel`.\n" +
+        "- Notes: If called without options, the command replies with current mappings for the server. Example: `/settings queue_channel:#music notification_channel:#announcements`.",
     );
 
   const tools = new EmbedBuilder()
     .setTitle("Tools & Utility")
     .setColor(0x7289da)
     .setDescription(
-      "**/ping** — latency check.\n**/refresh** — refresh internal state (reloads some caches).\n**/help** — open this interactive help.",
-    );
-
-  const internals = new EmbedBuilder()
-    .setTitle("Developer / Internals")
-    .setColor(0xaaaaaa)
-    .setDescription(
-      "Key files and behavior:\n" +
-        "- `src/functions/handlers/handleMusic.js` — core music logic (main queue persisted in MongoDB; priority queue in-memory).\n" +
-        "- `src/schemas` — Mongoose schemas used for persistence.\n" +
-        "- `src/commands` — Slash command handlers.\n\n" +
-        "Priority queue: FIFO. Items added while a track is playing will play after the current track finishes, then playback resumes from the main queue. Priority queue is lost on restart.",
+      "**/ping** — latency check.\n**/refresh** — refresh internal state.\n**/help** — show this interactive help.",
     );
 
   const misc = new EmbedBuilder()
-    .setTitle("Other Features")
+    .setTitle("Misc Commands")
     .setColor(0x00a8ff)
     .setDescription(
-      "Presence/RPC: `src/functions/tools/pickPresence.js`, `src/functions/tools/rpc.js`\n" +
-        "User persistence: `src/functions/handlers/handleUsers.js`\n" +
-        "Games/helpers: `src/functions/handlers/handleRoulette.js`",
+      "**/pet <action>**\n" +
+        "- `pet` — Pet the bot. Updates bot presence with your name and records the pet; a per-user cooldown prevents spamming. Example: `/pet action:pet`.\n" +
+        "- `ranking` — Show top petters in this server. Example: `/pet action:ranking`.\n\n" +
+        "**/roulette <action>**\n" +
+        "- `shoot` — Pull the trigger once. You may win or lose a life; rounds and remaining bullets are tracked. Example: `/roulette action:shoot`.\n" +
+        "- `roll` — Spin the cylinder without shooting; preserves game state and bullet count. Example: `/roulette action:roll`.\n" +
+        "- `quit` — Quit the current game and claim earned coins; resets bullets and rounds. Example: `/roulette action:quit`.\n" +
+        "- `lives` — Show your current lives and coins. Example: `/roulette action:lives`.\n" +
+        "- `rank` — Show leaderboard for roulette (top users by lives/coins). Example: `/roulette action:rank`.",
     );
 
-  return [music, moderation, tools, internals, misc];
+  return [intro, music, moderation, tools, misc];
 };
 
 module.exports = {
@@ -79,11 +119,11 @@ module.exports = {
         .setCustomId("help_select")
         .setPlaceholder("Jump to category")
         .addOptions(
-          { label: "Music", value: "0" },
-          { label: "Moderation", value: "1" },
-          { label: "Tools", value: "2" },
-          { label: "Internals", value: "3" },
-          { label: "Other", value: "4" },
+          { label: "Intro", value: "0" },
+          { label: "Music", value: "1" },
+          { label: "Moderation", value: "2" },
+          { label: "Tools", value: "3" },
+          { label: "Misc", value: "4" },
         ),
     );
 

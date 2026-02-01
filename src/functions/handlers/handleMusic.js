@@ -190,8 +190,9 @@ function getHistory(guildId) {
 // Play previous track: move last history item back to front and play
 async function playPrevious(guildId, interaction) {
   const history = getHistory(guildId);
+
+  // Need at least 2 items: current (last) + previous
   if (history.length < 2) {
-    // Not enough history to go back
     if (interaction && interaction.reply)
       return interaction.reply({
         content: "🚫 No previous track.",
@@ -200,27 +201,31 @@ async function playPrevious(guildId, interaction) {
     return;
   }
 
-  // Remove current playing (last) and get previous
-  const current = history.pop();
-  const prev = history.pop();
+  // Get current track (last in history) and previous (second to last)
+  // Do NOT modify history directly - we'll rebuild it after playback
+  const currentTrack = history[history.length - 1];
+  const previousTrack = history[history.length - 2];
 
-  // Put current back to front of main queue
-  let queue = await getQueue(guildId);
-  queue.unshift(current);
-  await saveQueue(guildId, queue);
+  // Add current track to priority queue so user can go forward again
+  addToPriorityQueue(guildId, currentTrack);
 
-  // Put prev to front so playNext picks it
-  queue = await getQueue(guildId);
-  queue.unshift(prev);
-  await saveQueue(guildId, queue);
-
-  // stop current and play next (which is prev)
+  // Stop current playback
   if (players[guildId]) {
     try {
       players[guildId].stop();
     } catch (e) {}
   }
   isPlaying[guildId] = false;
+
+  // Remove the last item from history (we're going back)
+  historyMap[guildId].pop();
+
+  // Add previous track to front of main queue so playNext picks it
+  let queue = await getQueue(guildId);
+  queue.unshift(previousTrack);
+  await saveQueue(guildId, queue);
+
+  // Play the previous track
   await playNext(guildId, interaction);
 }
 
@@ -483,7 +488,26 @@ async function playNext(guildId, interaction) {
       players[guildId].once(AudioPlayerStatus.Idle, async () => {
         clearInterval(idleTimers[guildId].progressInterval);
         try {
-          sentMessage.edit(`🎶 Finished playing: **${songName}**`);
+          // Get next song info to show in finished message
+          const nextQueue = await getQueue(guildId);
+          const pQueue = getPriorityQueue(guildId);
+          let nextSongName = null;
+          let nextSource = null;
+
+          if (pQueue && pQueue.length > 0) {
+            nextSongName = await getSongName(pQueue[0]);
+            nextSource = "priority";
+          } else if (nextQueue && nextQueue.length > 0) {
+            nextSongName = await getSongName(nextQueue[0]);
+            nextSource = "main";
+          }
+
+          let finishedMsg = `🎶 Finished playing: **${songName}**`;
+          if (nextSongName && nextSource) {
+            finishedMsg += `\n⏭️ Next: ${nextSource === "priority" ? "⭐" : ""} **${nextSongName}**`;
+          }
+
+          sentMessage.edit(finishedMsg);
         } catch (e) {
           logger.error(`Failed editing finished message: ${e}`);
         }
