@@ -348,7 +348,8 @@ module.exports = {
         ephemeral: true,
       });
 
-      playersStop(guildId);
+      const musicHandler = require("../../functions/handlers/handleMusic");
+      musicHandler.stopAndCleanup(guildId);
       await playNext(guildId, interaction);
     }
 
@@ -415,7 +416,8 @@ module.exports = {
       } catch (err) {
         logger.error(`Failed to reply skipto: ${err}`);
       }
-      playersStop(guildId);
+      const musicHandler = require("../../functions/handlers/handleMusic");
+      musicHandler.stopAndCleanup(guildId);
       await playNext(guildId, interaction);
     }
 

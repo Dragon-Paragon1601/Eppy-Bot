@@ -5,9 +5,9 @@ const logger = require("../../logger");
 const {
   saveQueue,
   playNext,
-  playersStop,
-  setLoopSong,
   getSongName,
+  stopAndCleanup,
+  setLoopSong,
 } = require("../../functions/handlers/handleMusic");
 
 const PUSH_FILE = "push.mp3";
@@ -50,7 +50,7 @@ module.exports = {
       setLoopSong(guildId, selectedFile);
 
       try {
-        playersStop(guildId);
+        stopAndCleanup(guildId);
       } catch (e) {}
 
       await playNext(guildId, interaction);

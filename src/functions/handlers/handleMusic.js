@@ -254,13 +254,13 @@ function resume(guildId) {
   return false;
 }
 
-// Dodaj piosenkę do kolejki
+// Add a song to the queue
 async function addToQueue(guildId, songPath) {
   let queue = await getQueue(guildId);
   queue.push(songPath);
   await saveQueue(guildId, queue);
 }
-// Dodaj piosenk\u0119 na 2 miejsce (index 1) w kolejce
+// Add a song to position 2 (index 1) in the queue
 async function addToQueueNext(guildId, songPath) {
   let queue = await getQueue(guildId);
   queue.splice(1, 0, songPath);
@@ -286,12 +286,12 @@ async function shuffleQueue(guildId, shuffleTimes = 10) {
   await saveQueue(guildId, queue);
 }
 
-// Sprawdź czy muzyka jest odtwarzana
+// Check if music is currently playing
 function isPlay(guildId) {
   return !!isPlaying[guildId];
 }
 
-// Zatrzymaj odtwarzanie muzyki
+// Stop music playback
 function playersStop(guildId) {
   const emptyResource = createAudioResource(Buffer.alloc(0));
   players[guildId].play(emptyResource);
@@ -340,7 +340,7 @@ function formatTime(ms) {
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
-// Utwórz pasek postępu dla odtwarzanej piosenki
+// Create a progress bar for the currently playing song
 function createProgressBar(currentTime, totalTime, barLength = 23) {
   if (isNaN(currentTime) || isNaN(totalTime) || totalTime === 0)
     return "[─────────────────]";
@@ -349,7 +349,7 @@ function createProgressBar(currentTime, totalTime, barLength = 23) {
   return "█".repeat(progress) + "─".repeat(barLength - progress);
 }
 
-// Pobierz długość piosenki
+// Get song duration from metadata
 async function getSongDuration(songPath) {
   try {
     const metadata = await mm.parseFile(songPath);
@@ -360,7 +360,7 @@ async function getSongDuration(songPath) {
   }
 }
 
-// Pobierz nazwę piosenki - jeśli dostępne metadane artist/title to je użyj, inaczej nazwę pliku
+// Get song name from metadata (artist/title) or fallback to filename
 async function getSongName(songPath) {
   try {
     const metadata = await mm.parseFile(songPath);
@@ -374,12 +374,18 @@ async function getSongName(songPath) {
     logger.debug(`Unable to fetch metadata for ${songPath}: ${err}`);
   }
 
-  // Fallback do nazwy pliku
+  // Fallback to filename if metadata unavailable
   return path.basename(songPath, ".mp3").replace(/_/g, " ");
 }
 
-// Odtwórz następną piosenkę w kolejce
+// Play the next song in the queue
 async function playNext(guildId, interaction) {
+  // Always clean up old progress interval before starting (prevents lag from /queue next)
+  if (idleTimers[guildId]?.progressInterval) {
+    clearInterval(idleTimers[guildId].progressInterval);
+    delete idleTimers[guildId].progressInterval;
+  }
+
   if (isPlaying[guildId]) {
     return;
   }
@@ -419,7 +425,7 @@ async function playNext(guildId, interaction) {
       });
 
       logger.debug(
-        `✅ Bot dołączył do kanału: ${voiceChannel.id} na serwerze ${guildId}`,
+        `✅ Bot joined voice channel: ${voiceChannel.id} on server ${guildId}`,
       );
     }
 
@@ -445,7 +451,7 @@ async function playNext(guildId, interaction) {
       return;
     }
 
-    // Zapamiętaj następny utwór który będzie zagrywany
+    // Cache next track info for display purposes
     const nextPQueue = getPriorityQueue(guildId);
     const nextQueue = await getQueue(guildId);
     let nextTrackData = null;
@@ -465,7 +471,7 @@ async function playNext(guildId, interaction) {
     players[guildId].play(resource);
     const songName = await getSongName(songPath);
 
-    logger.info(`🎵 Odtwarzanie dla ${guildId}: ${songName}`);
+    logger.info(`🎵 Now playing for ${guildId}: ${songName}`);
     // record played song in history (for back navigation)
     pushHistory(guildId, songPath);
     const sentMessage = await sendNotification(
@@ -598,7 +604,7 @@ async function playNext(guildId, interaction) {
 async function getQueueChannel(guildId) {
   const query = "SELECT * FROM queue_channels WHERE guild_id = ?";
   try {
-    // Tworzenie połączenia z bazą (lub użycie istniejącego)
+    // Create database connection (or use existing one)
     const connection = await mysql.createConnection({
       host: config.DB_HOST,
       user: config.DB_USER,
@@ -676,7 +682,7 @@ async function sendNotification(guildId, interaction, content, options = {}) {
   return null;
 }
 
-// Rozpocznij odtwarzanie muzyki
+// Start playing music
 function startPlaying(interaction) {
   const guildId = interaction.guild.id;
   if (
