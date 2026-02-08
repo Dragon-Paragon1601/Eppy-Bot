@@ -349,7 +349,21 @@ module.exports = {
       });
 
       const musicHandler = require("../../functions/handlers/handleMusic");
-      musicHandler.stopAndCleanup(guildId);
+      // Stop the player but keep the connection alive to avoid reconnect
+      const playerRef = musicHandler.players[guildId];
+      if (playerRef) {
+        try {
+          if (typeof playerRef.stop === "function") {
+            playerRef.stop();
+          }
+          if (typeof playerRef.removeAllListeners === "function") {
+            playerRef.removeAllListeners();
+          }
+        } catch (e) {
+          logger.error(`Failed stopping player: ${e}`);
+        }
+      }
+      musicHandler.isPlaying[guildId] = false;
       await playNext(guildId, interaction);
     }
 
