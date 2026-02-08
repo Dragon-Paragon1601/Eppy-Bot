@@ -481,21 +481,45 @@ async function playNext(guildId, interaction) {
 
     if (sentMessage && typeof sentMessage.edit === "function") {
       const totalTime = await getSongDuration(songPath);
+      let lastEditedSecond = -1;
+      let lastProgressSegment = -1;
 
       idleTimers[guildId].progressInterval = setInterval(() => {
         if (players[guildId].state.status === AudioPlayerStatus.Playing) {
           const currentTime = players[guildId].state.resource.playbackDuration;
-          try {
-            sentMessage.edit(
-              `🎶 **${songName}**\n${formatTime(currentTime)}/${formatTime(
-                totalTime,
-              )} [${createProgressBar(currentTime, totalTime)}]`,
-            );
-          } catch (e) {
-            logger.error(`Failed editing progress message: ${e}`);
+          const currentSecond = Math.floor(currentTime / 1000);
+          const currentProgress = Math.round((currentTime / totalTime) * 23);
+
+          let shouldUpdate = false;
+          let updateReason = "";
+
+          // Update if time (seconds) changed
+          if (currentSecond !== lastEditedSecond) {
+            lastEditedSecond = currentSecond;
+            shouldUpdate = true;
+            updateReason += "time ";
+          }
+
+          // Update if progress bar segment changed
+          if (currentProgress !== lastProgressSegment) {
+            lastProgressSegment = currentProgress;
+            shouldUpdate = true;
+            updateReason += "progress";
+          }
+
+          if (shouldUpdate) {
+            try {
+              sentMessage.edit(
+                `🎶 **${songName}**\n${formatTime(currentTime)}/${formatTime(
+                  totalTime,
+                )} [${createProgressBar(currentTime, totalTime)}]`,
+              );
+            } catch (e) {
+              logger.error(`Failed editing progress message: ${e}`);
+            }
           }
         }
-      }, 1000);
+      }, 100);
 
       players[guildId].once(AudioPlayerStatus.Idle, async () => {
         clearInterval(idleTimers[guildId].progressInterval);
