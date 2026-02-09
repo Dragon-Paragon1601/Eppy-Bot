@@ -459,10 +459,22 @@ async function playNext(guildId, interaction) {
     const nextPQueue = getPriorityQueue(guildId);
     const nextQueue = await getQueue(guildId);
     let nextTrackData = null;
-    if (nextPQueue && nextPQueue.length > 0) {
-      nextTrackData = { songPath: nextPQueue[0], source: "priority" };
-    } else if (nextQueue && nextQueue.length > 0) {
-      nextTrackData = { songPath: nextQueue[0], source: "main" };
+
+    // Account for the fact that currently playing song is still in the queue
+    if (currentlyPlayingSource[guildId] === "priority") {
+      // Playing from priority queue, next is remaining priority or main queue
+      if (nextPQueue && nextPQueue.length > 0) {
+        nextTrackData = { songPath: nextPQueue[0], source: "priority" };
+      } else if (nextQueue && nextQueue.length > 0) {
+        nextTrackData = { songPath: nextQueue[0], source: "main" };
+      }
+    } else if (currentlyPlayingSource[guildId] === "main") {
+      // Playing from main queue, current song is at [0], so next is at [1]
+      if (nextPQueue && nextPQueue.length > 0) {
+        nextTrackData = { songPath: nextPQueue[0], source: "priority" };
+      } else if (nextQueue && nextQueue.length > 1) {
+        nextTrackData = { songPath: nextQueue[1], source: "main" };
+      }
     }
     nextTrackInfo.set(guildId, nextTrackData);
 
