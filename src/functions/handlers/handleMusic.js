@@ -478,11 +478,13 @@ async function playNext(guildId, interaction) {
     logger.info(`🎵 Now playing for ${guildId}: ${songName}`);
     // record played song in history (for back navigation)
     pushHistory(guildId, songPath);
-    const sentMessage = await sendNotification(
-      guildId,
-      interaction,
-      `🎶 Now playing: **${songName}**`,
-    );
+
+    // Run sendNotification and getSongDuration in parallel to speed up progress bar setup
+    const [sentMessage, totalTime] = await Promise.all([
+      sendNotification(guildId, interaction, `🎶 Now playing: **${songName}**`),
+      getSongDuration(songPath),
+    ]);
+
     if (!idleTimers[guildId]) idleTimers[guildId] = {};
 
     if (idleTimers[guildId]?.progressInterval) {
@@ -490,7 +492,6 @@ async function playNext(guildId, interaction) {
     }
 
     if (sentMessage && typeof sentMessage.edit === "function") {
-      const totalTime = await getSongDuration(songPath);
       let lastEditedSecond = -1;
       let lastProgressSegment = -1;
 
@@ -530,6 +531,17 @@ async function playNext(guildId, interaction) {
           }
         }
       }, 100);
+
+      // Immediately update message with initial progress bar (0:00/total)
+      try {
+        sentMessage.edit(
+          `🎶 **${songName}**\n${formatTime(0)}/${formatTime(
+            totalTime,
+          )} [${createProgressBar(0, totalTime)}]`,
+        );
+      } catch (e) {
+        logger.debug(`Initial progress bar edit failed: ${e}`);
+      }
 
       players[guildId].once(AudioPlayerStatus.Idle, async () => {
         clearInterval(idleTimers[guildId].progressInterval);
