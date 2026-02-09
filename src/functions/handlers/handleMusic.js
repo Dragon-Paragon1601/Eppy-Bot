@@ -313,7 +313,11 @@ async function queueEmpty(guildId, interaction) {
       logger.debug(
         `🔁 Looping queue for guild ${guildId}. Refilled ${source.length} tracks.`,
       );
-      playNext(guildId, interaction);
+      try {
+        await playNext(guildId, interaction);
+      } catch (err) {
+        logger.error(`Error in queueEmpty playNext call: ${err}`);
+      }
       return;
     }
     if (interaction.channel) {
@@ -568,7 +572,11 @@ async function playNext(guildId, interaction) {
         nextTrackInfo.delete(guildId);
         // release starting lock (allow future playNext calls)
         _startingSet.delete(guildId);
-        playNext(guildId, interaction);
+        try {
+          await playNext(guildId, interaction);
+        } catch (err) {
+          logger.error(`Error in Idle listener playNext call: ${err}`);
+        }
       });
     } else {
       // No editable message available; fall back to minimal idle handling
@@ -589,7 +597,15 @@ async function playNext(guildId, interaction) {
         }
         delete currentlyPlayingSource[guildId];
         // ensure we don't start concurrently
-        if (!_startingSet.has(guildId)) playNext(guildId, interaction);
+        if (!_startingSet.has(guildId)) {
+          try {
+            await playNext(guildId, interaction);
+          } catch (err) {
+            logger.error(
+              `Error in fallback Idle listener playNext call: ${err}`,
+            );
+          }
+        }
       });
     }
 

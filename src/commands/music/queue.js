@@ -356,15 +356,17 @@ module.exports = {
           if (typeof playerRef.stop === "function") {
             playerRef.stop();
           }
-          if (typeof playerRef.removeAllListeners === "function") {
-            playerRef.removeAllListeners();
-          }
         } catch (e) {
           logger.error(`Failed stopping player: ${e}`);
         }
       }
       musicHandler.isPlaying[guildId] = false;
-      await playNext(guildId, interaction);
+
+      try {
+        await playNext(guildId, interaction);
+      } catch (err) {
+        logger.error(`playNext error in 'next' action: ${err}`);
+      }
     }
 
     if (action === "skipto") {
@@ -432,7 +434,11 @@ module.exports = {
       }
       const musicHandler = require("../../functions/handlers/handleMusic");
       musicHandler.stopAndCleanup(guildId);
-      await playNext(guildId, interaction);
+      try {
+        await playNext(guildId, interaction);
+      } catch (err) {
+        logger.error(`playNext error in 'skipto' action: ${err}`);
+      }
     }
 
     if (action === "stop") {
@@ -555,7 +561,11 @@ module.exports = {
         logger.error(`Failed to edit reply (resuming): ${err}`);
       }
 
-      await playNext(guildId, interaction);
+      try {
+        await playNext(guildId, interaction);
+      } catch (err) {
+        logger.error(`playNext error in 'resume' action: ${err}`);
+      }
     }
   },
 };
