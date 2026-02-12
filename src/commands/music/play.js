@@ -165,7 +165,7 @@ module.exports = {
         const songName = await getSongName(filePath);
         await addToPriorityQueue(guildId, filePath);
         return interaction.reply({
-          content: `⏭️ Playing next: **${songName}**`,
+          content: `⏭️ Added to priority queue: ⭐ **${songName}**`,
           // make this visible to all
         });
       } else {
