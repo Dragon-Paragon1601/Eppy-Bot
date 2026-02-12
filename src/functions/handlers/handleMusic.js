@@ -338,12 +338,14 @@ async function queueEmpty(guildId, interaction) {
   }
 }
 
+/*
 // Sformatuj czas w milisekundach na minuty i sekundy
 function formatTime(ms) {
   const minutes = Math.floor(ms / 60000);
   const seconds = Math.floor((ms % 60000) / 1000);
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
+*/
 
 // Create a progress bar for the currently playing song
 function createProgressBar(currentTime, totalTime, barLength = 23) {
@@ -515,38 +517,29 @@ async function playNext(guildId, interaction) {
     }
 
     if (sentMessage && typeof sentMessage.edit === "function") {
-      let lastEditedSecond = -1;
+      // let lastEditedSecond = -1; // commented timer tracking
       let lastProgressSegment = -1;
 
       const progressInterval = setInterval(() => {
         if (players[guildId].state.status === AudioPlayerStatus.Playing) {
           const currentTime = players[guildId].state.resource.playbackDuration;
-          const currentSecond = Math.floor(currentTime / 1000);
+          // const currentSecond = Math.floor(currentTime / 1000); // no numeric display
           const currentProgress = Math.round((currentTime / totalTime) * 23);
 
           let shouldUpdate = false;
-          let updateReason = "";
+          // let updateReason = "";
 
-          // Update if time (seconds) changed
-          if (currentSecond !== lastEditedSecond) {
-            lastEditedSecond = currentSecond;
-            shouldUpdate = true;
-            updateReason += "time ";
-          }
-
-          // Update if progress bar segment changed
+          // only update on progress bar change
           if (currentProgress !== lastProgressSegment) {
             lastProgressSegment = currentProgress;
             shouldUpdate = true;
-            updateReason += "progress";
+            // updateReason += "progress";
           }
 
           if (shouldUpdate) {
             try {
               sentMessage.edit(
-                `🎶 **${songName}**\n${formatTime(currentTime)}/${formatTime(
-                  totalTime,
-                )} [${createProgressBar(currentTime, totalTime)}]`,
+                `🎶 **${songName}**\n[${createProgressBar(currentTime, totalTime)}]`,
               );
             } catch (e) {
               logger.error(`Failed editing progress message: ${e}`);
@@ -559,12 +552,10 @@ async function playNext(guildId, interaction) {
       idleTimers[guildId].progressInterval = progressInterval;
       progressIntervalsMap.set(guildId, progressInterval);
 
-      // Immediately update message with initial progress bar (0:00/total)
+      // Immediately update message with initial progress bar (no timers)
       try {
         sentMessage.edit(
-          `🎶 **${songName}**\n${formatTime(0)}/${formatTime(
-            totalTime,
-          )} [${createProgressBar(0, totalTime)}]`,
+          `🎶 **${songName}**\n[${createProgressBar(0, totalTime)}]`,
         );
       } catch (e) {
         logger.debug(`Initial progress bar edit failed: ${e}`);
