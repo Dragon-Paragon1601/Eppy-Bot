@@ -321,19 +321,28 @@ module.exports = {
         skippedSongName = await getSongName(history[history.length - 1]);
       }
 
-      // Determine what's next (after skipping current)
-      // If priority queue has 2+ items, next is priority[1]
-      // If priority has 1 item, next is main queue[0]
-      // If no priority, next is main queue[1]
+      // Determine what will be played after skipping current.  We examine copies
+      // of the priority and main queues and remove the skipped song if it sits at
+      // the head so that the message doesn't mistakenly report it again.
       let nextSongName = null;
-      if (pQueue && pQueue.length > 1) {
-        nextSongName = await getSongName(pQueue[1]);
-      } else if (pQueue && pQueue.length === 1 && hasQueue) {
-        nextSongName = await getSongName(queue[0]);
-      } else if (!pQueue || pQueue.length === 0) {
-        if (hasQueue && queue.length > 1) {
-          nextSongName = await getSongName(queue[1]);
-        }
+      const skippedPath =
+        history && history.length > 0 ? history[history.length - 1] : null;
+
+      // copy arrays to avoid mutating real data
+      const pCopy = pQueue ? pQueue.slice() : [];
+      const qCopy = queue ? queue.slice() : [];
+
+      // drop the skipped track if it's queued as first in either list
+      if (skippedPath) {
+        if (pCopy.length > 0 && pCopy[0] === skippedPath) pCopy.shift();
+        if (qCopy.length > 0 && qCopy[0] === skippedPath) qCopy.shift();
+      }
+
+      // priority wins if anything remains
+      if (pCopy.length > 0) {
+        nextSongName = await getSongName(pCopy[0]);
+      } else if (qCopy.length > 0) {
+        nextSongName = await getSongName(qCopy[0]);
       }
 
       let skipMsg = `⏭️ Skipped: **${skippedSongName || "Unknown"}**`;
@@ -345,7 +354,7 @@ module.exports = {
 
       await interaction.reply({
         content: skipMsg,
-        ephemeral: true,
+        // visible to everyone now
       });
 
       const musicHandler = require("../../functions/handlers/handleMusic");

@@ -166,7 +166,7 @@ module.exports = {
         await addToPriorityQueue(guildId, filePath);
         return interaction.reply({
           content: `⏭️ Playing next: **${songName}**`,
-          ephemeral: true,
+          // make this visible to all
         });
       } else {
         await saveQueue(guildId, [filePath]);
