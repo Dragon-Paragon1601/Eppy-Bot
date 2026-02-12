@@ -338,14 +338,12 @@ async function queueEmpty(guildId, interaction) {
   }
 }
 
-/*
 // Sformatuj czas w milisekundach na minuty i sekundy
 function formatTime(ms) {
   const minutes = Math.floor(ms / 60000);
   const seconds = Math.floor((ms % 60000) / 1000);
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
-*/
 
 // Create a progress bar for the currently playing song
 function createProgressBar(currentTime, totalTime, barLength = 23) {
@@ -367,14 +365,24 @@ async function getSongDuration(songPath) {
   }
 }
 
+// Truncate string to max length, appending ellipsis if needed
+function truncate(str, maxLen) {
+  if (!str || typeof str !== "string") return str;
+  if (str.length <= maxLen) return str;
+  return str.slice(0, maxLen - 3) + "...";
+}
+
 // Get song name from metadata (artist/title) or fallback to filename
 async function getSongName(songPath) {
   try {
     const metadata = await mm.parseFile(songPath);
-    const artist = metadata.common?.artist;
-    const title = metadata.common?.title;
+    let artist = metadata.common?.artist;
+    let title = metadata.common?.title;
 
     if (artist && title) {
+      // limit artist length for display
+      artist = truncate(artist, 25);
+      title = truncate(title, 50); // also protect title if very long
       return `${title} - ${artist}`;
     }
   } catch (err) {
@@ -504,11 +512,24 @@ async function playNext(guildId, interaction) {
     // record played song in history (for back navigation)
     pushHistory(guildId, songPath);
 
-    // Run sendNotification and getSongDuration in parallel to speed up progress bar setup
+    // Run getSongDuration in parallel with the initial notification; we'll edit the
+    // notification once we know the total time so the displayed length isn't a
+    // countdown but a static value.
     const [sentMessage, totalTime] = await Promise.all([
       sendNotification(guildId, interaction, `🎶 Now playing: **${songName}**`),
       getSongDuration(songPath),
     ]);
+
+    // if we have a sent message, append the formatted total length
+    if (sentMessage && typeof sentMessage.edit === "function") {
+      try {
+        sentMessage.edit(
+          `🎶 Now playing: **${songName}** (${formatTime(totalTime)})`,
+        );
+      } catch (e) {
+        logger.error(`Failed editing initial notification for duration: ${e}`);
+      }
+    }
 
     if (!idleTimers[guildId]) idleTimers[guildId] = {};
 
@@ -539,7 +560,7 @@ async function playNext(guildId, interaction) {
           if (shouldUpdate) {
             try {
               sentMessage.edit(
-                `🎶 **${songName}**\n[${createProgressBar(currentTime, totalTime)}]`,
+                `🎶 **${songName}** (${formatTime(totalTime)})\n[${createProgressBar(currentTime, totalTime)}]`,
               );
             } catch (e) {
               logger.error(`Failed editing progress message: ${e}`);
@@ -555,7 +576,7 @@ async function playNext(guildId, interaction) {
       // Immediately update message with initial progress bar (no timers)
       try {
         sentMessage.edit(
-          `🎶 **${songName}**\n[${createProgressBar(0, totalTime)}]`,
+          `🎶 **${songName}** (${formatTime(totalTime)})\n[${createProgressBar(0, totalTime)}]`,
         );
       } catch (e) {
         logger.debug(`Initial progress bar edit failed: ${e}`);
@@ -582,10 +603,8 @@ async function playNext(guildId, interaction) {
             nextSource = cachedNextTrack.source;
           }
 
-          let finishedMsg = `🎶 Finished playing: **${songName}**`;
-          if (nextSongName && nextSource) {
-            finishedMsg += `\n⏭️ Next: ${nextSource === "priority" ? "⭐" : ""} **${nextSongName}**`;
-          }
+          // only state that the track finished, no longer mention next track
+          const finishedMsg = `🎶 Finished playing: **${songName}**`;
 
           sentMessage.edit(finishedMsg);
         } catch (e) {
