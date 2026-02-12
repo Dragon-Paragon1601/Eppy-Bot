@@ -32,6 +32,7 @@ const loopQueueMap = new Map();
 const loopSourceMap = new Map();
 const playlistMap = new Map(); // guildId -> playlist name
 const randomTypeMap = new Map(); // guildId -> 'off'|'from_playlist'|'playlist'|'all'
+const progressIntervalsMap = new Map(); // guildId -> intervalId (for more reliable cleanup)
 
 // Check if the first song was started
 function checkFirstSongStarted(guildId) {
@@ -384,10 +385,20 @@ async function getSongName(songPath) {
 
 // Play the next song in the queue
 async function playNext(guildId, interaction) {
-  // Always clean up old progress interval before starting (prevents lag from /queue next)
-  if (idleTimers[guildId]?.progressInterval) {
-    clearInterval(idleTimers[guildId].progressInterval);
-    delete idleTimers[guildId].progressInterval;
+  // Aggressive cleanup of old progress interval first
+  if (progressIntervalsMap.has(guildId)) {
+    const oldInterval = progressIntervalsMap.get(guildId);
+    clearInterval(oldInterval);
+    progressIntervalsMap.delete(guildId);
+  }
+  // Also clean up from idleTimers to be safe
+  if (idleTimers[guildId]) {
+    if (typeof idleTimers[guildId].progressInterval === "number") {
+      clearInterval(idleTimers[guildId].progressInterval);
+    } else if (idleTimers[guildId].progressInterval) {
+      clearInterval(idleTimers[guildId].progressInterval);
+    }
+    idleTimers[guildId].progressInterval = null;
   }
 
   if (isPlaying[guildId]) {
@@ -507,7 +518,7 @@ async function playNext(guildId, interaction) {
       let lastEditedSecond = -1;
       let lastProgressSegment = -1;
 
-      idleTimers[guildId].progressInterval = setInterval(() => {
+      const progressInterval = setInterval(() => {
         if (players[guildId].state.status === AudioPlayerStatus.Playing) {
           const currentTime = players[guildId].state.resource.playbackDuration;
           const currentSecond = Math.floor(currentTime / 1000);
@@ -544,6 +555,10 @@ async function playNext(guildId, interaction) {
         }
       }, 100);
 
+      // Store interval in both places for redundancy
+      idleTimers[guildId].progressInterval = progressInterval;
+      progressIntervalsMap.set(guildId, progressInterval);
+
       // Immediately update message with initial progress bar (0:00/total)
       try {
         sentMessage.edit(
@@ -556,7 +571,15 @@ async function playNext(guildId, interaction) {
       }
 
       players[guildId].once(AudioPlayerStatus.Idle, async () => {
-        clearInterval(idleTimers[guildId].progressInterval);
+        // Clean up progress interval BEFORE anything else
+        if (progressIntervalsMap.has(guildId)) {
+          clearInterval(progressIntervalsMap.get(guildId));
+          progressIntervalsMap.delete(guildId);
+        }
+        if (idleTimers[guildId]?.progressInterval) {
+          clearInterval(idleTimers[guildId].progressInterval);
+          idleTimers[guildId].progressInterval = null;
+        }
         try {
           // Get next track info that was cached by playNext()
           const cachedNextTrack = nextTrackInfo.get(guildId);
@@ -605,8 +628,14 @@ async function playNext(guildId, interaction) {
     } else {
       // No editable message available; fall back to minimal idle handling
       players[guildId].once(AudioPlayerStatus.Idle, async () => {
-        if (idleTimers[guildId]?.progressInterval)
+        if (progressIntervalsMap.has(guildId)) {
+          clearInterval(progressIntervalsMap.get(guildId));
+          progressIntervalsMap.delete(guildId);
+        }
+        if (idleTimers[guildId]?.progressInterval) {
           clearInterval(idleTimers[guildId].progressInterval);
+          idleTimers[guildId].progressInterval = null;
+        }
         isPlaying[guildId] = false;
         firstSongStartedMap.set(guildId, false);
         queue = await getQueue(guildId);
@@ -736,18 +765,25 @@ function startPlaying(interaction) {
 // Stop playback and clean up timers/listeners to avoid duplicate playNext calls
 function stopAndCleanup(guildId) {
   try {
-    // clear progress interval if any
-    if (idleTimers[guildId]?.progressInterval) {
-      clearInterval(idleTimers[guildId].progressInterval);
-      delete idleTimers[guildId].progressInterval;
+    // clear progress interval if any - use Map first for reliability
+    if (progressIntervalsMap.has(guildId)) {
+      clearInterval(progressIntervalsMap.get(guildId));
+      progressIntervalsMap.delete(guildId);
+    }
+    // Also clean up from idleTimers
+    if (idleTimers[guildId]) {
+      if (idleTimers[guildId].progressInterval) {
+        clearInterval(idleTimers[guildId].progressInterval);
+        idleTimers[guildId].progressInterval = null;
+      }
+      if (idleTimers[guildId].timeout) {
+        clearTimeout(idleTimers[guildId].timeout);
+        idleTimers[guildId].timeout = null;
+      }
     }
     // clear any timeout used for idle disconnects
     if (idleTimers[guildId] && typeof idleTimers[guildId] === "number") {
       clearTimeout(idleTimers[guildId]);
-    }
-    if (idleTimers[guildId] && idleTimers[guildId].timeout) {
-      clearTimeout(idleTimers[guildId].timeout);
-      delete idleTimers[guildId].timeout;
     }
     delete idleTimers[guildId];
 
