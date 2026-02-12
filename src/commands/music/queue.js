@@ -339,15 +339,20 @@ module.exports = {
       }
 
       // priority wins if anything remains
+      let nextIsPriority = false;
       if (pCopy.length > 0) {
+        nextIsPriority = true;
         nextSongName = await getSongName(pCopy[0]);
       } else if (qCopy.length > 0) {
         nextSongName = await getSongName(qCopy[0]);
       }
 
+      // attach flag value back to skipMsg later
+      const priorityIndicator = nextIsPriority ? "⭐ " : "";
+
       let skipMsg = `⏭️ Skipped: **${skippedSongName || "Unknown"}**`;
       if (nextSongName) {
-        skipMsg += `\n⏭️ Next: **${nextSongName}**`;
+        skipMsg += `\n⏭️ Next: ${priorityIndicator}**${nextSongName}**`;
       } else {
         skipMsg += `\n⏭️ Queue is now empty!`;
       }

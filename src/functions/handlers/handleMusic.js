@@ -507,8 +507,12 @@ async function playNext(guildId, interaction) {
     connections[guildId].subscribe(players[guildId]);
     players[guildId].play(resource);
     const songName = await getSongName(songPath);
+    const isPrioritySong = currentlyPlayingSource[guildId] === "priority";
+    const displayName = isPrioritySong ? `⭐ ${songName}` : songName;
 
-    logger.info(`🎵 Now playing for ${guildId}: ${songName}`);
+    logger.info(
+      `🎵 Now playing for ${guildId}: ${songName} (priority: ${isPrioritySong})`,
+    );
     // record played song in history (for back navigation)
     pushHistory(guildId, songPath);
 
@@ -524,7 +528,7 @@ async function playNext(guildId, interaction) {
     if (sentMessage && typeof sentMessage.edit === "function") {
       try {
         sentMessage.edit(
-          `🎶 Now playing: **${songName}** (${formatTime(totalTime)})`,
+          `🎶 Now playing: **${displayName}** (${formatTime(totalTime)})`,
         );
       } catch (e) {
         logger.error(`Failed editing initial notification for duration: ${e}`);
@@ -560,7 +564,7 @@ async function playNext(guildId, interaction) {
           if (shouldUpdate) {
             try {
               sentMessage.edit(
-                `🎶 **${songName}** (${formatTime(totalTime)})\n[${createProgressBar(currentTime, totalTime)}]`,
+                `🎶 **${displayName}** (${formatTime(totalTime)})\n[${createProgressBar(currentTime, totalTime)}]`,
               );
             } catch (e) {
               logger.error(`Failed editing progress message: ${e}`);
@@ -604,7 +608,7 @@ async function playNext(guildId, interaction) {
           }
 
           // only state that the track finished, no longer mention next track
-          const finishedMsg = `🎶 Finished playing: **${songName}**`;
+          const finishedMsg = `🎶 Finished playing: **${isPrioritySong ? "⭐ " : ""}${songName}**`;
 
           sentMessage.edit(finishedMsg);
         } catch (e) {
