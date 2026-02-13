@@ -180,7 +180,29 @@ module.exports = {
 
     if (action === "previous") {
       try {
+        // compute name of the track that will be pulled from the previous queue
+        const {
+          getPreviousQueue,
+        } = require("../../functions/handlers/handleMusic");
+        const prevQueue = getPreviousQueue(guildId);
+        const prevPath =
+          prevQueue && prevQueue.length > 0
+            ? prevQueue[prevQueue.length - 1]
+            : null;
+        let prevName = null;
+        if (prevPath) prevName = await getSongName(prevPath);
+
+        if (!prevPath) {
+          await playPrevious(guildId, interaction);
+          return;
+        }
+
+        // perform the actual previous logic (this will pop the item and enqueue it)
         await playPrevious(guildId, interaction);
+
+        let replyMsg = `⏮️ Queued previous track: **${prevName || "Unknown"}**`;
+        replyMsg += `\n⏭️ Next: **${prevName || "Unknown"}**`;
+        await interaction.reply({ content: replyMsg });
       } catch (err) {
         logger.error(`Failed previous: ${err}`);
         return interaction.reply({

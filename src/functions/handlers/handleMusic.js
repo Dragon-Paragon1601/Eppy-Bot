@@ -22,6 +22,12 @@ let players = {};
 let queues = {};
 const priorityQueues = {};
 const historyMap = {};
+// separate structure to maintain a 'previous' queue (tracks that have finished playing)
+// this is what `/queue previous` will pull from. we keep it distinct from historyMap
+// because history is also used for informational commands like `/queue next`.
+const previousQueues = {};
+// highest-priority queue used when /queue previous is invoked
+const previousPriorityQueues = {};
 const currentlyPlayingSource = {}; // 'main' or 'priority'
 const nextTrackInfo = new Map(); // guildId -> { songPath, source: 'priority'|'main' } for display in Idle
 const loopSongMap = new Map();
@@ -33,6 +39,7 @@ const loopSourceMap = new Map();
 const playlistMap = new Map(); // guildId -> playlist name
 const randomTypeMap = new Map(); // guildId -> 'off'|'from_playlist'|'playlist'|'all'
 const progressIntervalsMap = new Map(); // guildId -> intervalId (for more reliable cleanup)
+const skipPreviousRecordMap = new Map();
 
 // Check if the first song was started
 function checkFirstSongStarted(guildId) {
@@ -189,12 +196,50 @@ function getHistory(guildId) {
   return historyMap[guildId] || [];
 }
 
+// previous-queue helpers --------------------------------------------------
+function pushPreviousQueue(guildId, songPath) {
+  if (!previousQueues[guildId]) previousQueues[guildId] = [];
+  previousQueues[guildId].push(songPath);
+  // keep it reasonably bounded
+  if (previousQueues[guildId].length > 200) previousQueues[guildId].shift();
+}
+
+function popPreviousQueue(guildId) {
+  const q = previousQueues[guildId] || [];
+  return q.length > 0 ? q.pop() : null;
+}
+
+function getPreviousQueue(guildId) {
+  return previousQueues[guildId] || [];
+}
+
+function clearPreviousQueue(guildId) {
+  previousQueues[guildId] = [];
+}
+
+// previous priority queue helpers -----------------------------------------
+function addToPreviousPriorityQueue(guildId, songPath) {
+  if (!previousPriorityQueues[guildId]) previousPriorityQueues[guildId] = [];
+  previousPriorityQueues[guildId].push(songPath);
+  if (previousPriorityQueues[guildId].length > 200)
+    previousPriorityQueues[guildId].shift();
+}
+
+function getPreviousPriorityQueue(guildId) {
+  return previousPriorityQueues[guildId] || [];
+}
+
+function clearPreviousPriorityQueue(guildId) {
+  previousPriorityQueues[guildId] = [];
+}
+
 // Play previous track from history
 async function playPrevious(guildId, interaction) {
-  const history = getHistory(guildId);
-
-  // Need at least 2 items: current (last) + previous
-  if (history.length < 2) {
+  // grab the last played song from the dedicated "previous" queue. this
+  // queue is populated when tracks finish. we `pop` so that calling
+  // `/queue previous` repeatedly will step backwards through the history.
+  const previousTrack = popPreviousQueue(guildId);
+  if (!previousTrack) {
     if (interaction && interaction.reply)
       return interaction.reply({
         content: "🚫 No previous track.",
@@ -203,33 +248,30 @@ async function playPrevious(guildId, interaction) {
     return;
   }
 
-  // Get previous track (second to last in history)
-  const previousTrack = history[history.length - 2];
+  // schedule the previous track to play next with the highest priority
+  addToPreviousPriorityQueue(guildId, previousTrack);
 
-  // Stop current playback
+  // the currently playing song should become the next after the previous
+  const history = getHistory(guildId);
+  const currentTrack =
+    history && history.length > 0 ? history[history.length - 1] : null;
+  if (currentTrack) addToPreviousPriorityQueue(guildId, currentTrack);
+
+  // ensure the currently playing song does NOT get recorded to previousQueue
+  skipPreviousRecordMap.set(guildId, true);
+
+  // stop the currently playing song; the idle listener in playNext will shift
+  // the queue and start the next track (which is the one we just queued).
   if (players[guildId]) {
     try {
       players[guildId].stop();
     } catch (e) {}
   }
 
-  // Reset playing state
+  // make sure the handler knows the queue is no longer playing so a new song
+  // can be started; we don't want the previous lock to block playNext
   isPlaying[guildId] = false;
   _startingSet.delete(guildId);
-
-  // Clear priority queue to avoid interference
-  clearPriorityQueue(guildId);
-
-  // Add previous track to front of queue (keep rest intact)
-  let queue = await getQueue(guildId);
-  queue.unshift(previousTrack);
-  await saveQueue(guildId, queue);
-
-  // Set currentlyPlayingSource to main so normal queue shifting happens
-  delete currentlyPlayingSource[guildId];
-
-  // Play the previous track
-  await playNext(guildId, interaction);
 }
 
 function pause(guildId) {
@@ -270,6 +312,9 @@ async function addToQueueNext(guildId, songPath) {
 // Clear the queue for a guild
 async function clearQueue(guildId) {
   await saveQueue(guildId, []);
+  // when the main queue is wiped we should also forget any "previous" history
+  clearPreviousQueue(guildId);
+  clearPreviousPriorityQueue(guildId);
 }
 
 // Shuffle the queue for a guild
@@ -461,10 +506,20 @@ async function playNext(guildId, interaction) {
       return;
     }
 
-    // choose next song: priority queue takes precedence
+    // choose next song: previous-priority queue > priority queue > main queue
     let songPath;
+    const ppQueue = getPreviousPriorityQueue(guildId);
     const pQueue = getPriorityQueue(guildId);
-    if (pQueue && pQueue.length > 0) {
+    if (ppQueue && ppQueue.length > 0) {
+      songPath = ppQueue.shift();
+      currentlyPlayingSource[guildId] = "previous_priority";
+      // remove it from main queue if it was also inserted there for visibility
+      const idx = queue.indexOf(songPath);
+      if (idx >= 0) {
+        queue.splice(idx, 1);
+        await saveQueue(guildId, queue);
+      }
+    } else if (pQueue && pQueue.length > 0) {
       songPath = pQueue.shift();
       currentlyPlayingSource[guildId] = "priority";
     } else {
@@ -477,21 +532,37 @@ async function playNext(guildId, interaction) {
     }
 
     // Cache next track info for display purposes
+    const nextPPQueue = getPreviousPriorityQueue(guildId);
     const nextPQueue = getPriorityQueue(guildId);
     const nextQueue = await getQueue(guildId);
     let nextTrackData = null;
 
     // Account for the fact that currently playing song is still in the queue
-    if (currentlyPlayingSource[guildId] === "priority") {
-      // Playing from priority queue, next is remaining priority or main queue
-      if (nextPQueue && nextPQueue.length > 0) {
+    if (currentlyPlayingSource[guildId] === "previous_priority") {
+      // Playing from previous-priority queue, next is remaining prev-priority,
+      // then priority, then main queue
+      if (nextPPQueue && nextPPQueue.length > 0) {
+        nextTrackData = { songPath: nextPPQueue[0], source: "previous" };
+      } else if (nextPQueue && nextPQueue.length > 0) {
+        nextTrackData = { songPath: nextPQueue[0], source: "priority" };
+      } else if (nextQueue && nextQueue.length > 0) {
+        nextTrackData = { songPath: nextQueue[0], source: "main" };
+      }
+    } else if (currentlyPlayingSource[guildId] === "priority") {
+      // Playing from priority queue, next is remaining prev-priority,
+      // then remaining priority, or main queue
+      if (nextPPQueue && nextPPQueue.length > 0) {
+        nextTrackData = { songPath: nextPPQueue[0], source: "previous" };
+      } else if (nextPQueue && nextPQueue.length > 0) {
         nextTrackData = { songPath: nextPQueue[0], source: "priority" };
       } else if (nextQueue && nextQueue.length > 0) {
         nextTrackData = { songPath: nextQueue[0], source: "main" };
       }
     } else if (currentlyPlayingSource[guildId] === "main") {
       // Playing from main queue, current song is at [0], so next is at [1]
-      if (nextPQueue && nextPQueue.length > 0) {
+      if (nextPPQueue && nextPPQueue.length > 0) {
+        nextTrackData = { songPath: nextPPQueue[0], source: "previous" };
+      } else if (nextPQueue && nextPQueue.length > 0) {
         nextTrackData = { songPath: nextPQueue[0], source: "priority" };
       } else if (nextQueue && nextQueue.length > 1) {
         nextTrackData = { songPath: nextQueue[1], source: "main" };
@@ -528,7 +599,7 @@ async function playNext(guildId, interaction) {
     if (sentMessage && typeof sentMessage.edit === "function") {
       try {
         sentMessage.edit(
-          `🎶 Now playing: **${displayName}** (${formatTime(totalTime)})`,
+          `🎶 Now playing: **${displayName}** [${formatTime(totalTime)}]`,
         );
       } catch (e) {
         logger.error(`Failed editing initial notification for duration: ${e}`);
@@ -614,12 +685,19 @@ async function playNext(guildId, interaction) {
         } catch (e) {
           logger.error(`Failed editing finished message: ${e}`);
         }
+        // record the finished track in the previous queue (used by /queue previous)
+        if (skipPreviousRecordMap.get(guildId)) {
+          skipPreviousRecordMap.delete(guildId);
+        } else {
+          pushPreviousQueue(guildId, songPath);
+        }
+
         isPlaying[guildId] = false;
         firstSongStartedMap.set(guildId, false);
         queue = await getQueue(guildId);
         const loopSong = loopSongMap.get(guildId);
-        // if the song was from main queue and not looped single-song, shift it
         if (currentlyPlayingSource[guildId] === "main") {
+          // if the song was from main queue and not looped single-song, shift it
           if (!loopSong || loopSong !== songPath) {
             if (queue.length > 0) {
               queue.shift();
@@ -650,6 +728,13 @@ async function playNext(guildId, interaction) {
           clearInterval(idleTimers[guildId].progressInterval);
           idleTimers[guildId].progressInterval = null;
         }
+        // finished track should go to previous queue unless explicitly skipped
+        if (skipPreviousRecordMap.get(guildId)) {
+          skipPreviousRecordMap.delete(guildId);
+        } else {
+          pushPreviousQueue(guildId, songPath);
+        }
+
         isPlaying[guildId] = false;
         firstSongStartedMap.set(guildId, false);
         queue = await getQueue(guildId);
@@ -842,6 +927,10 @@ function stopAndCleanup(guildId) {
     }
     // ensure start-lock is cleared so playNext can run again after stop/clear
     if (_startingSet.has(guildId)) _startingSet.delete(guildId);
+    // also clear previous queue so old tracks aren't accidentally reused
+    clearPreviousQueue(guildId);
+    clearPreviousPriorityQueue(guildId);
+    skipPreviousRecordMap.delete(guildId);
   } catch (err) {
     logger.error(`stopAndCleanup error for ${guildId}: ${err}`);
   }
@@ -864,6 +953,10 @@ module.exports = {
   pause,
   resume,
   getHistory,
+  // previous queue helpers
+  getPreviousQueue,
+  popPreviousQueue,
+  clearPreviousQueue,
   isPlay,
   playersStop,
   connections,
