@@ -251,11 +251,22 @@ async function playPrevious(guildId, interaction) {
   // schedule the previous track to play next with the highest priority
   addToPreviousPriorityQueue(guildId, previousTrack);
 
-  // the currently playing song should become the next after the previous
-  const history = getHistory(guildId);
-  const currentTrack =
-    history && history.length > 0 ? history[history.length - 1] : null;
-  if (currentTrack) addToPreviousPriorityQueue(guildId, currentTrack);
+  // if we're currently playing a track that itself came from /queue previous,
+  // move it to the front of the main queue so it can play later and we can
+  // safely pull another previous item next.
+  if (currentlyPlayingSource[guildId] === "previous_priority") {
+    const history = getHistory(guildId);
+    const currentTrack =
+      history && history.length > 0 ? history[history.length - 1] : null;
+    if (currentTrack) {
+      const queue = await getQueue(guildId);
+      if (!queue || queue[0] !== currentTrack) {
+        const nextQueue = Array.isArray(queue) ? queue.slice() : [];
+        nextQueue.unshift(currentTrack);
+        await saveQueue(guildId, nextQueue);
+      }
+    }
+  }
 
   // ensure the currently playing song does NOT get recorded to previousQueue
   skipPreviousRecordMap.set(guildId, true);
@@ -513,12 +524,6 @@ async function playNext(guildId, interaction) {
     if (ppQueue && ppQueue.length > 0) {
       songPath = ppQueue.shift();
       currentlyPlayingSource[guildId] = "previous_priority";
-      // remove it from main queue if it was also inserted there for visibility
-      const idx = queue.indexOf(songPath);
-      if (idx >= 0) {
-        queue.splice(idx, 1);
-        await saveQueue(guildId, queue);
-      }
     } else if (pQueue && pQueue.length > 0) {
       songPath = pQueue.shift();
       currentlyPlayingSource[guildId] = "priority";
