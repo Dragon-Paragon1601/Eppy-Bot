@@ -957,6 +957,7 @@ module.exports = {
   getPreviousQueue,
   popPreviousQueue,
   clearPreviousQueue,
+  getPreviousPriorityQueue,
   isPlay,
   playersStop,
   connections,

@@ -9,6 +9,7 @@ const {
   clearQueue,
   getSongName,
   getPriorityQueue,
+  getPreviousPriorityQueue,
   playPrevious,
   pause,
   resume,
@@ -69,9 +70,27 @@ module.exports = {
     const voiceChannel = interaction.member.voice.channel;
 
     if (action === "queue") {
+      const ppQueue = await getPreviousPriorityQueue(guildId);
       const pQueue = await getPriorityQueue(guildId);
 
       let queueMessage = "";
+
+      // Display previous-priority queue first if it exists
+      if (ppQueue && ppQueue.length > 0) {
+        const prevPriorityDisplay = await Promise.all(
+          ppQueue.slice(0, 25).map(async (file, index) => {
+            const songName = await getSongName(file);
+            return `\`${index + 1}.\` ⏮️ **${songName}**`;
+          }),
+        ).then((results) => results.join("\n"));
+
+        queueMessage += `⏮️ **Previous Priority Queue:**\n${prevPriorityDisplay}`;
+        if (ppQueue.length > 25) {
+          queueMessage += `\n...and **${ppQueue.length - 25}** more previous items!\n\n`;
+        } else {
+          queueMessage += "\n\n";
+        }
+      }
 
       // Display priority queue first if it exists
       if (pQueue && pQueue.length > 0) {
@@ -92,7 +111,7 @@ module.exports = {
 
       // Display main queue
       if (!queue || queue.length === 0) {
-        if (pQueue && pQueue.length > 0) {
+        if ((ppQueue && ppQueue.length > 0) || (pQueue && pQueue.length > 0)) {
           queueMessage += "📁 **Main Queue:** (empty)";
         } else {
           return await interaction.reply({
@@ -320,13 +339,15 @@ module.exports = {
       }
     }
     if (action === "next") {
+      const ppQueue = await getPreviousPriorityQueue(guildId);
       const pQueue = await getPriorityQueue(guildId);
       const { getHistory } = require("../../functions/handlers/handleMusic");
       const history = getHistory(guildId);
 
       // Check if there's something to skip to
       const hasQueue = queue && queue.length > 0;
-      const hasPriority = pQueue && pQueue.length > 0;
+      const hasPriority =
+        (ppQueue && ppQueue.length > 0) || (pQueue && pQueue.length > 0);
 
       if (!hasQueue && !hasPriority) {
         return interaction.reply({
@@ -351,18 +372,22 @@ module.exports = {
         history && history.length > 0 ? history[history.length - 1] : null;
 
       // copy arrays to avoid mutating real data
+      const ppCopy = ppQueue ? ppQueue.slice() : [];
       const pCopy = pQueue ? pQueue.slice() : [];
       const qCopy = queue ? queue.slice() : [];
 
       // drop the skipped track if it's queued as first in either list
       if (skippedPath) {
+        if (ppCopy.length > 0 && ppCopy[0] === skippedPath) ppCopy.shift();
         if (pCopy.length > 0 && pCopy[0] === skippedPath) pCopy.shift();
         if (qCopy.length > 0 && qCopy[0] === skippedPath) qCopy.shift();
       }
 
       // priority wins if anything remains
       let nextIsPriority = false;
-      if (pCopy.length > 0) {
+      if (ppCopy.length > 0) {
+        nextSongName = await getSongName(ppCopy[0]);
+      } else if (pCopy.length > 0) {
         nextIsPriority = true;
         nextSongName = await getSongName(pCopy[0]);
       } else if (qCopy.length > 0) {
