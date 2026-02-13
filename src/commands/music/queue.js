@@ -219,9 +219,9 @@ module.exports = {
         // perform the actual previous logic (this will pop the item and enqueue it)
         await playPrevious(guildId, interaction);
 
-        let replyMsg = `⏮️ Queued previous track: **${prevName || "Unknown"}**`;
-        replyMsg += `\n⏭️ Next: **${prevName || "Unknown"}**`;
-        await interaction.reply({ content: replyMsg });
+        await interaction.reply({
+          content: `⏮️ Queued previous track: **${prevName || "Unknown"}**`,
+        });
       } catch (err) {
         logger.error(`Failed previous: ${err}`);
         return interaction.reply({

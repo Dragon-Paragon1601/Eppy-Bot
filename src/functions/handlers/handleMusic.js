@@ -40,6 +40,7 @@ const playlistMap = new Map(); // guildId -> playlist name
 const randomTypeMap = new Map(); // guildId -> 'off'|'from_playlist'|'playlist'|'all'
 const progressIntervalsMap = new Map(); // guildId -> intervalId (for more reliable cleanup)
 const skipPreviousRecordMap = new Map();
+const skipQueueShiftMap = new Map();
 
 // Check if the first song was started
 function checkFirstSongStarted(guildId) {
@@ -270,6 +271,8 @@ async function playPrevious(guildId, interaction) {
 
   // ensure the currently playing song does NOT get recorded to previousQueue
   skipPreviousRecordMap.set(guildId, true);
+  // ensure the currently playing song is not removed from the main queue
+  skipQueueShiftMap.set(guildId, true);
 
   // stop the currently playing song; the idle listener in playNext will shift
   // the queue and start the next track (which is the one we just queued).
@@ -701,7 +704,9 @@ async function playNext(guildId, interaction) {
         firstSongStartedMap.set(guildId, false);
         queue = await getQueue(guildId);
         const loopSong = loopSongMap.get(guildId);
-        if (currentlyPlayingSource[guildId] === "main") {
+        if (skipQueueShiftMap.get(guildId)) {
+          skipQueueShiftMap.delete(guildId);
+        } else if (currentlyPlayingSource[guildId] === "main") {
           // if the song was from main queue and not looped single-song, shift it
           if (!loopSong || loopSong !== songPath) {
             if (queue.length > 0) {
@@ -744,7 +749,9 @@ async function playNext(guildId, interaction) {
         firstSongStartedMap.set(guildId, false);
         queue = await getQueue(guildId);
         const loopSong = loopSongMap.get(guildId);
-        if (currentlyPlayingSource[guildId] === "main") {
+        if (skipQueueShiftMap.get(guildId)) {
+          skipQueueShiftMap.delete(guildId);
+        } else if (currentlyPlayingSource[guildId] === "main") {
           if (!loopSong || loopSong !== songPath) {
             if (queue.length > 0) {
               queue.shift();
@@ -936,6 +943,7 @@ function stopAndCleanup(guildId) {
     clearPreviousQueue(guildId);
     clearPreviousPriorityQueue(guildId);
     skipPreviousRecordMap.delete(guildId);
+    skipQueueShiftMap.delete(guildId);
   } catch (err) {
     logger.error(`stopAndCleanup error for ${guildId}: ${err}`);
   }
