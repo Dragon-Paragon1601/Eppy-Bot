@@ -51,6 +51,13 @@ Common tasks:
 - Register slash commands: run your command registration script or use your deployment flow to sync commands with Discord.
 - Start the bot: `node src/bot.js` (ensure .env is present and dependencies installed).
 
+PM2 setup (required for /restart):
+
+- Install PM2 globally: `npm install -g pm2`.
+- Start the bot with the provided PM2 config: `pm2 start ecosystem.config.js`.
+- The process name must be `Eppy` because `/restart` runs `pm2 restart Eppy`.
+- Auto-restart on code changes is enabled by `watch: ["src"]` in ecosystem.config.js.
+
 Support and troubleshooting:
 
 - Check logs/ for runtime logs; enable debug mode in logger if you need more details.

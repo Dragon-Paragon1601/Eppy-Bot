@@ -13,7 +13,7 @@ module.exports = {
       merge_logs: true,
 
       // STABILNOŚĆ
-      watch: false,
+      watch: ["src"],
       autorestart: true,
       listen_timeout: 5000,
       restart_delay: 5000,
