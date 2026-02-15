@@ -33,11 +33,9 @@ const pages = () => {
         "- `resume` — unpause playback if paused; if stopped and queue exists, starts playback. Example: `/queue resume`.\n" +
         "- `pause` — pause current playback. Example: `/queue pause`.\n" +
         "- `next` — skip current track to next (priority considered). Example: `/queue next`.\n" +
-        "- `skipto <index>` — skip ahead to a specific queue position (1-based index). Example: `/queue skipto index:5`.\n" +
         "- `shuffle` — shuffle the main queue (priority queue is not shuffled). Example: `/queue shuffle`.\n" +
         "- `previous` — play the previous track from history (if available). Example: `/queue previous`.\n" +
-        "- `stop` — stop playback and disconnect bot from voice. Example: `/queue stop`.\n" +
-        "- `unplay <index>` — remove a queued track by its number: `/queue unplay index:3`.\n\n" +
+        "- `stop` — stop playback and disconnect bot from voice. Example: `/queue stop`.\n\n" +
         "Priority queue behavior:\n" +
         "- Priority queue holds tracks added while something is playing.\n" +
         "- It is FIFO: items play in the order they were added.\n" +

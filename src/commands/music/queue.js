@@ -40,15 +40,7 @@ module.exports = {
           { name: "pause", value: "pause" },
           { name: "resume", value: "resume" },
           { name: "stop", value: "stop" },
-          { name: "skipto", value: "skipto" },
-          { name: "unplay", value: "unplay" },
         ),
-    )
-    .addIntegerOption((option) =>
-      option
-        .setName("index")
-        .setDescription("Song number for 'skipto' or 'unplay' action")
-        .setRequired(false),
     )
     .addBooleanOption((option) =>
       option
@@ -430,78 +422,6 @@ module.exports = {
       }
     }
 
-    if (action === "skipto") {
-      if (
-        !interaction.options ||
-        typeof interaction.options.getInteger !== "function"
-      ) {
-        console.error("Invalid interaction options:", interaction.options);
-        return interaction.reply({
-          content: "?? Invalid interaction options!",
-          ephemeral: true,
-        });
-      }
-
-      const pQueue = await getPriorityQueue(guildId);
-      const indexRaw = interaction.options.getInteger("index");
-
-      // Total queue size = priority queue size + main queue size
-      const prioritySize = pQueue ? pQueue.length : 0;
-      const totalSize = prioritySize + (queue ? queue.length : 0);
-
-      if (totalSize === 0) {
-        return interaction.reply({
-          content: "🚫 Queue is empty!",
-          ephemeral: true,
-        });
-      }
-
-      // Validate index (1-based from user perspective)
-      if (indexRaw < 1 || indexRaw > totalSize) {
-        return interaction.reply({
-          content: `🚫 Wrong song number! Queue has ${totalSize} songs.`,
-          ephemeral: true,
-        });
-      }
-
-      isPlay(guildId);
-
-      // Index 1 is current song, so we skip to index (user wants index-1 in 0-based)
-      const targetIndex = indexRaw - 1;
-
-      if (targetIndex <= prioritySize) {
-        // Skip within priority queue
-        const skipAmount = targetIndex - 1; // -1 because we keep current
-        if (skipAmount > 0 && pQueue) {
-          pQueue.splice(0, skipAmount);
-        }
-      } else {
-        // Skip into main queue - need to account for priority queue
-        // Main queue index = targetIndex - prioritySize - 1
-        const mainQueueTarget = targetIndex - prioritySize - 1;
-        if (queue && mainQueueTarget > 0) {
-          queue.splice(0, mainQueueTarget);
-          await saveQueue(guildId, queue);
-        }
-      }
-
-      try {
-        await interaction.reply({
-          content: `⏭️ Skipped to song ${indexRaw}.`,
-          ephemeral: true,
-        });
-      } catch (err) {
-        logger.error(`Failed to reply skipto: ${err}`);
-      }
-      const musicHandler = require("../../functions/handlers/handleMusic");
-      musicHandler.stopAndCleanup(guildId);
-      try {
-        await playNext(guildId, interaction);
-      } catch (err) {
-        logger.error(`playNext error in 'skipto' action: ${err}`);
-      }
-    }
-
     if (action === "stop") {
       try {
         if (!voiceChannel) {
@@ -536,54 +456,6 @@ module.exports = {
           content: "❌ Something went wrong while stopping bot.",
           ephemeral: true,
         });
-      }
-    }
-
-    if (action === "unplay") {
-      if (
-        !interaction.options ||
-        typeof interaction.options.getInteger !== "function"
-      ) {
-        console.error("Invalid interaction options:", interaction.options);
-        return interaction.reply({
-          content: "?? Invalid interaction options!",
-          ephemeral: true,
-        });
-      }
-      const amountRaw = interaction.options.getInteger("index");
-      const amount = amountRaw - 2;
-      if (!queue || queue.length === 0) {
-        return interaction.reply({
-          content: "🚫 Queue is empty!",
-          ephemeral: true,
-        });
-      }
-
-      if (amount < 0 || amount >= queue.length) {
-        return interaction.reply({
-          content: "🚫 Wrong song number!",
-          ephemeral: true,
-        });
-      }
-
-      if (amount === 0) {
-        return interaction.reply({
-          content: "🚫 You can't delete currently played song!",
-          ephemeral: true,
-        });
-      }
-
-      const removedSongPath = queue.splice(amount, 1)[0];
-      await saveQueue(guildId, queue);
-
-      const removedSongName = await getSongName(removedSongPath);
-
-      try {
-        await interaction.reply({
-          content: `🗑️ Deleted **${removedSongName}** from queue`,
-        });
-      } catch (err) {
-        logger.error(`Failed to reply removed song: ${err}`);
       }
     }
 
