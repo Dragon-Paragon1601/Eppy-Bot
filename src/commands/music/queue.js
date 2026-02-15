@@ -96,8 +96,10 @@ module.exports = {
         const remainingCount = Math.max(mainNames.length - end, 0);
 
         const lines = [];
-        lines.push(`⬆️ Na poprzednich stronach: **${previousCount}**`);
-        lines.push("");
+        if (safePage > 0) {
+          lines.push(`⬆️ Na poprzednich stronach: **${previousCount}**`);
+          lines.push("");
+        }
 
         if (safePage === 0 && priorityNames.length > 0) {
           lines.push("⭐ **Priority Queue:**");
