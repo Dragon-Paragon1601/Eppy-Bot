@@ -440,8 +440,8 @@ async function getSongName(songPath) {
 
     if (artist && title) {
       // limit artist length for display
-      artist = truncate(artist, 25);
-      title = truncate(title, 50); // also protect title if very long
+      artist = truncate(artist, 20);
+      title = truncate(title, 40); // also protect title if very long
       return `${title} - ${artist}`;
     }
   } catch (err) {
