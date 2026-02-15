@@ -1,4 +1,10 @@
-const { SlashCommandBuilder } = require("discord.js");
+const {
+  SlashCommandBuilder,
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+} = require("discord.js");
 const {
   getQueue,
   playNext,
@@ -62,76 +68,132 @@ module.exports = {
     const voiceChannel = interaction.member.voice.channel;
 
     if (action === "queue") {
-      const ppQueue = await getPreviousPriorityQueue(guildId);
       const pQueue = await getPriorityQueue(guildId);
+      const mainQueue = queue || [];
 
-      let queueMessage = "";
-
-      // Display previous-priority queue first if it exists
-      if (ppQueue && ppQueue.length > 0) {
-        const prevPriorityDisplay = await Promise.all(
-          ppQueue.slice(0, 25).map(async (file, index) => {
-            const songName = await getSongName(file);
-            return `\`${index + 1}.\` ⏮️ **${songName}**`;
-          }),
-        ).then((results) => results.join("\n"));
-
-        queueMessage += `⏮️ **Previous Priority Queue:**\n${prevPriorityDisplay}`;
-        if (ppQueue.length > 25) {
-          queueMessage += `\n...and **${ppQueue.length - 25}** more previous items!\n\n`;
-        } else {
-          queueMessage += "\n\n";
-        }
-      }
-
-      // Display priority queue first if it exists
-      if (pQueue && pQueue.length > 0) {
-        const priorityDisplay = await Promise.all(
-          pQueue.slice(0, 25).map(async (file, index) => {
-            const songName = await getSongName(file);
-            return `\`${index + 1}.\` ⭐ **${songName}**`;
-          }),
-        ).then((results) => results.join("\n"));
-
-        queueMessage += `⭐ **Priority Queue:**\n${priorityDisplay}`;
-        if (pQueue.length > 25) {
-          queueMessage += `\n...and **${pQueue.length - 25}** more priority songs!\n\n`;
-        } else {
-          queueMessage += "\n\n";
-        }
-      }
-
-      // Display main queue
-      if (!queue || queue.length === 0) {
-        if ((ppQueue && ppQueue.length > 0) || (pQueue && pQueue.length > 0)) {
-          queueMessage += "📁 **Main Queue:** (empty)";
-        } else {
-          return await interaction.reply({
-            content: "🎵 Queue is now empty.",
-          });
-        }
-      } else {
-        const displayedQueue = await Promise.all(
-          queue.slice(0, 25).map(async (file, index) => {
-            const songName = await getSongName(file);
-            return `\`${index + 1}.\` **${songName}**`;
-          }),
-        ).then((results) => results.join("\n"));
-
-        queueMessage += `📁 **Main Queue:**\n${displayedQueue}`;
-        if (queue.length > 25) {
-          queueMessage += `\n...and **${queue.length - 25}** more songs!`;
-        }
-      }
-
-      try {
+      if ((!pQueue || pQueue.length === 0) && mainQueue.length === 0) {
         return await interaction.reply({
-          content: queueMessage,
+          content: "🎵 Queue is now empty.",
         });
-      } catch (err) {
-        logger.error(`Failed to send queue reply: ${err}`);
-        return null;
       }
+
+      const PAGE_SIZE = 10;
+      const totalPages = Math.max(1, Math.ceil(mainQueue.length / PAGE_SIZE));
+
+      const priorityNames = pQueue
+        ? await Promise.all(pQueue.map((file) => getSongName(file)))
+        : [];
+      const mainNames = await Promise.all(
+        mainQueue.map((file) => getSongName(file)),
+      );
+
+      const createEmbed = (page) => {
+        const safePage = Math.max(0, Math.min(page, totalPages - 1));
+        const start = safePage * PAGE_SIZE;
+        const end = Math.min(start + PAGE_SIZE, mainNames.length);
+        const currentMainSlice = mainNames.slice(start, end);
+        const previousCount = start;
+        const remainingCount = Math.max(mainNames.length - end, 0);
+
+        const lines = [];
+        lines.push(`⬆️ Na poprzednich stronach: **${previousCount}**`);
+        lines.push("");
+
+        if (safePage === 0 && priorityNames.length > 0) {
+          lines.push("⭐ **Priority Queue:**");
+
+          for (let i = 0; i < priorityNames.length; i++) {
+            lines.push(`\`${i + 1}.\` ⭐ **${priorityNames[i]}**`);
+          }
+          lines.push("");
+        }
+
+        lines.push("📁 **Main Queue:**");
+        if (currentMainSlice.length === 0) {
+          lines.push("*(empty)*");
+        } else {
+          for (let i = 0; i < currentMainSlice.length; i++) {
+            const position = start + i + 1;
+            lines.push(`\`${position}.\` **${currentMainSlice[i]}**`);
+          }
+        }
+
+        lines.push("");
+        lines.push(`⬇️ Do końca kolejki: **${remainingCount}**`);
+
+        return new EmbedBuilder()
+          .setTitle("🎵 Queue")
+          .setDescription(lines.join("\n"))
+          .setColor(0x1db954)
+          .setFooter({ text: `Strona ${safePage + 1}/${totalPages}` });
+      };
+
+      const createButtons = (page, disabled = false) =>
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId("queue_prev")
+            .setLabel("◀️ Prev")
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(disabled || page <= 0),
+          new ButtonBuilder()
+            .setCustomId("queue_next")
+            .setLabel("Next ▶️")
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(disabled || page >= totalPages - 1),
+        );
+
+      let page = 0;
+      const reply = await interaction.reply({
+        embeds: [createEmbed(page)],
+        components: [createButtons(page)],
+        fetchReply: true,
+      });
+
+      if (totalPages <= 1) {
+        return;
+      }
+
+      const authorId = interaction.user.id;
+      const collector = reply.createMessageComponentCollector({ time: 120000 });
+
+      collector.on("collect", async (i) => {
+        try {
+          if (i.user.id !== authorId) {
+            await i.reply({
+              content: "Only the command user can control this queue message.",
+              ephemeral: true,
+            });
+            return;
+          }
+
+          if (!i.isButton()) return;
+
+          if (i.customId === "queue_next" && page < totalPages - 1) {
+            page += 1;
+          } else if (i.customId === "queue_prev" && page > 0) {
+            page -= 1;
+          }
+
+          await i.update({
+            embeds: [createEmbed(page)],
+            components: [createButtons(page)],
+          });
+        } catch (err) {
+          logger.error(`Queue collector error: ${err}`);
+        }
+      });
+
+      collector.on("end", async () => {
+        try {
+          await reply.edit({
+            components: [createButtons(page, true)],
+          });
+        } catch (err) {
+          logger.error(`Failed to disable queue buttons: ${err}`);
+        }
+      });
+
+      return;
     }
 
     if (action === "clear") {
