@@ -49,7 +49,11 @@ module.exports = {
       });
     }
 
-    const message = interaction.options.getString("message", true);
+    const rawMessage = interaction.options.getString("message", true);
+    const message = rawMessage
+      .replaceAll("\\n", "\n")
+      .replaceAll("<br>", "\n")
+      .replaceAll("<br/>", "\n");
     const title =
       interaction.options.getString("title") || "📢 Eppy-Bot Notice";
     const ping = interaction.options.getBoolean("ping") ?? false;

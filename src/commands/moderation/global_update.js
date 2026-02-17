@@ -7,12 +7,11 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName("global_update")
     .setDescription("Send global update message to configured update channels")
-    .addStringOption((option) =>
+    .addAttachmentOption((option) =>
       option
-        .setName("message")
-        .setDescription("Update message content")
-        .setRequired(true)
-        .setMaxLength(2000),
+        .setName("message_file")
+        .setDescription("Text file (.txt) with update message content")
+        .setRequired(true),
     )
     .addStringOption((option) =>
       option
@@ -49,7 +48,7 @@ module.exports = {
       });
     }
 
-    const message = interaction.options.getString("message", true);
+    const messageFile = interaction.options.getAttachment("message_file", true);
     const title =
       interaction.options.getString("title") || "🚀 Eppy-Bot — New Update";
     const pingRole = interaction.options.getBoolean("ping_role") ?? false;
@@ -58,6 +57,45 @@ module.exports = {
     await interaction.deferReply({ ephemeral: true });
 
     try {
+      const isTextFile =
+        (messageFile.contentType || "").startsWith("text/") ||
+        (messageFile.name || "").toLowerCase().endsWith(".txt");
+
+      if (!isTextFile) {
+        return interaction.editReply({
+          content:
+            "❌ `message_file` must be a text file (`.txt` or text/* content type).",
+        });
+      }
+
+      const fileResponse = await fetch(messageFile.url);
+      if (!fileResponse.ok) {
+        return interaction.editReply({
+          content: `❌ Could not read attached file (HTTP ${fileResponse.status}).`,
+        });
+      }
+
+      const rawMessage = await fileResponse.text();
+      const message = rawMessage
+        .replace(/\r\n/g, "\n")
+        .replaceAll("\\n", "\n")
+        .replaceAll("<br>", "\n")
+        .replaceAll("<br/>", "\n")
+        .trim();
+
+      if (!message.length) {
+        return interaction.editReply({
+          content: "❌ `message_file` is empty.",
+        });
+      }
+
+      if (message.length > 4096) {
+        return interaction.editReply({
+          content:
+            "❌ Message from file is too long for embed description (max 4096 chars).",
+        });
+      }
+
       const [rows] = await pool.query(
         "SELECT c.guild_id, c.update_notification_channel_id, r.notification_role_id FROM update_notification_channels c LEFT JOIN update_notification_roles r ON c.guild_id = r.guild_id",
       );

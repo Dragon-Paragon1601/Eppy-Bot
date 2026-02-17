@@ -3,6 +3,8 @@
 Use this as a ready message blueprint for `/global_update` or `/global_notiffication`.
 Replace placeholders in `{...}` and keep only sections you need.
 
+`/global_update` now reads message content from an attached `.txt` file, so normal line breaks are preserved automatically.
+
 ---
 
 ## Version A — Premium / Fancy
@@ -10,9 +12,9 @@ Replace placeholders in `{...}` and keep only sections you need.
 **Title**
 `🚀 Eppy-Bot Update {version}`
 
-**Message (paste into command `message`)**
+**Message (save in `.txt` and attach as `message_file`)**
 
-```text
+```
 ## ✨ What’s New
 • {new_feature_1}
 • {new_feature_2}
@@ -40,7 +42,7 @@ Thanks for using Eppy 💙
 
 **Message**
 
-```text
+```
 ✅ New: {new_1}
 ✅ New: {new_2}
 🔧 Improved: {improved_1}
@@ -48,32 +50,4 @@ Thanks for using Eppy 💙
 ⏱️ Downtime: {downtime}
 
 Thank you for using Eppy 💙
-```
-
----
-
-## Quick Copy Example (ready now)
-
-**Title**
-`🚀 Eppy-Bot Update`
-
-**Message**
-
-```text
-## ✨ What’s New
-• Added `update_notification_channel` in `/settings`
-• Added `notification_role` in `/settings`
-• Added `/global_update` and `/global_notiffication` with `dry_run`
-
-## ⚙️ Improvements
-• `/restart` now supports `notify`, `ping`, `delay`
-• Restart notices now use random prebuilt messages
-
-## 👀 Action Required
-• Admins can set update channels and role in `/settings`
-
-## ⏱️ Downtime / Restart
-• Short restart window (usually under 1 minute)
-
-Thanks for using Eppy 💙
 ```
