@@ -7,11 +7,18 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName("global_update")
     .setDescription("Send global update message to configured update channels")
+    .addStringOption((option) =>
+      option
+        .setName("message")
+        .setDescription("Update message content (manual mode)")
+        .setRequired(false)
+        .setMaxLength(2000),
+    )
     .addAttachmentOption((option) =>
       option
         .setName("message_file")
         .setDescription("Text file (.txt) with update message content")
-        .setRequired(true),
+        .setRequired(false),
     )
     .addStringOption((option) =>
       option
@@ -48,7 +55,8 @@ module.exports = {
       });
     }
 
-    const messageFile = interaction.options.getAttachment("message_file", true);
+    const manualMessage = interaction.options.getString("message");
+    const messageFile = interaction.options.getAttachment("message_file");
     const title =
       interaction.options.getString("title") || "🚀 Eppy-Bot — New Update";
     const pingRole = interaction.options.getBoolean("ping_role") ?? false;
@@ -57,42 +65,65 @@ module.exports = {
     await interaction.deferReply({ ephemeral: true });
 
     try {
-      const isTextFile =
-        (messageFile.contentType || "").startsWith("text/") ||
-        (messageFile.name || "").toLowerCase().endsWith(".txt");
-
-      if (!isTextFile) {
+      if (!manualMessage && !messageFile) {
         return interaction.editReply({
           content:
-            "❌ `message_file` must be a text file (`.txt` or text/* content type).",
+            "❌ Provide either `message` (manual) or `message_file` (.txt).",
         });
       }
 
-      const fileResponse = await fetch(messageFile.url);
-      if (!fileResponse.ok) {
+      if (manualMessage && messageFile) {
         return interaction.editReply({
-          content: `❌ Could not read attached file (HTTP ${fileResponse.status}).`,
+          content: "❌ Use one input mode only: `message` OR `message_file`.",
         });
       }
 
-      const rawMessage = await fileResponse.text();
-      const message = rawMessage
-        .replace(/\r\n/g, "\n")
-        .replaceAll("\\n", "\n")
-        .replaceAll("<br>", "\n")
-        .replaceAll("<br/>", "\n")
-        .trim();
+      let message = "";
+
+      if (messageFile) {
+        const isTextFile =
+          (messageFile.contentType || "").startsWith("text/") ||
+          (messageFile.name || "").toLowerCase().endsWith(".txt");
+
+        if (!isTextFile) {
+          return interaction.editReply({
+            content:
+              "❌ `message_file` must be a text file (`.txt` or text/* content type).",
+          });
+        }
+
+        const fileResponse = await fetch(messageFile.url);
+        if (!fileResponse.ok) {
+          return interaction.editReply({
+            content: `❌ Could not read attached file (HTTP ${fileResponse.status}).`,
+          });
+        }
+
+        const rawFromFile = await fileResponse.text();
+        message = rawFromFile
+          .replace(/\r\n/g, "\n")
+          .replaceAll("\\n", "\n")
+          .replaceAll("<br>", "\n")
+          .replaceAll("<br/>", "\n")
+          .trim();
+      } else {
+        message = manualMessage
+          .replaceAll("\\n", "\n")
+          .replaceAll("<br>", "\n")
+          .replaceAll("<br/>", "\n")
+          .trim();
+      }
 
       if (!message.length) {
         return interaction.editReply({
-          content: "❌ `message_file` is empty.",
+          content: "❌ Message content is empty.",
         });
       }
 
       if (message.length > 4096) {
         return interaction.editReply({
           content:
-            "❌ Message from file is too long for embed description (max 4096 chars).",
+            "❌ Message is too long for embed description (max 4096 chars).",
         });
       }
 

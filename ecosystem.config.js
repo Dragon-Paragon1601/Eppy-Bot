@@ -14,7 +14,7 @@ module.exports = {
 
       // STABILNOŚĆ
       watch: ["src"],
-      autorestart: true,
+      autorestart: false,
       listen_timeout: 5000,
       restart_delay: 5000,
 

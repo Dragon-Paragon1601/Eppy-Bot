@@ -12,9 +12,15 @@ module.exports = {
     .addStringOption((option) =>
       option
         .setName("message")
-        .setDescription("Notification message content")
-        .setRequired(true)
+        .setDescription("Notification message content (manual mode)")
+        .setRequired(false)
         .setMaxLength(2000),
+    )
+    .addAttachmentOption((option) =>
+      option
+        .setName("message_file")
+        .setDescription("Text file (.txt) with notification content")
+        .setRequired(false),
     )
     .addStringOption((option) =>
       option
@@ -49,11 +55,8 @@ module.exports = {
       });
     }
 
-    const rawMessage = interaction.options.getString("message", true);
-    const message = rawMessage
-      .replaceAll("\\n", "\n")
-      .replaceAll("<br>", "\n")
-      .replaceAll("<br/>", "\n");
+    const manualMessage = interaction.options.getString("message");
+    const messageFile = interaction.options.getAttachment("message_file");
     const title =
       interaction.options.getString("title") || "📢 Eppy-Bot Notice";
     const ping = interaction.options.getBoolean("ping") ?? false;
@@ -62,6 +65,68 @@ module.exports = {
     await interaction.deferReply({ ephemeral: true });
 
     try {
+      if (!manualMessage && !messageFile) {
+        return interaction.editReply({
+          content:
+            "❌ Provide either `message` (manual) or `message_file` (.txt).",
+        });
+      }
+
+      if (manualMessage && messageFile) {
+        return interaction.editReply({
+          content: "❌ Use one input mode only: `message` OR `message_file`.",
+        });
+      }
+
+      let message = "";
+
+      if (messageFile) {
+        const isTextFile =
+          (messageFile.contentType || "").startsWith("text/") ||
+          (messageFile.name || "").toLowerCase().endsWith(".txt");
+
+        if (!isTextFile) {
+          return interaction.editReply({
+            content:
+              "❌ `message_file` must be a text file (`.txt` or text/* content type).",
+          });
+        }
+
+        const fileResponse = await fetch(messageFile.url);
+        if (!fileResponse.ok) {
+          return interaction.editReply({
+            content: `❌ Could not read attached file (HTTP ${fileResponse.status}).`,
+          });
+        }
+
+        const rawFromFile = await fileResponse.text();
+        message = rawFromFile
+          .replace(/\r\n/g, "\n")
+          .replaceAll("\\n", "\n")
+          .replaceAll("<br>", "\n")
+          .replaceAll("<br/>", "\n")
+          .trim();
+      } else {
+        message = manualMessage
+          .replaceAll("\\n", "\n")
+          .replaceAll("<br>", "\n")
+          .replaceAll("<br/>", "\n")
+          .trim();
+      }
+
+      if (!message.length) {
+        return interaction.editReply({
+          content: "❌ Message content is empty.",
+        });
+      }
+
+      if (message.length > 4096) {
+        return interaction.editReply({
+          content:
+            "❌ Message is too long for embed description (max 4096 chars).",
+        });
+      }
+
       const [rows] = await pool.query(
         "SELECT guild_id, notification_channel_id FROM notification_channels",
       );

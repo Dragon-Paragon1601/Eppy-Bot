@@ -1,5 +1,6 @@
 src/functions/handlers/queueConfig.json
 send_commit_gui.ps1
+Update_message.txt
 youtube_links.txt
 send_commit.bat
 node_modules/
