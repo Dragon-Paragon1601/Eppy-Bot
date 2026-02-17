@@ -46,6 +46,132 @@ How priority queue works:
 - When the current track (from main queue) finishes, any items in the priority queue play first; after the priority queue empties, playback continues from the main queue.
 - Priority queue is in-memory and will be lost if the bot restarts.
 
+Detailed list of all available slash commands:
+
+Music commands:
+
+- /play [track] [playlist]
+  - Purpose: play a single track or set active playlist for track lookup.
+  - Options:
+    - track (string, optional, autocomplete) — track name without .mp3.
+    - playlist (string, optional, autocomplete) — playlist folder name, or none to clear active playlist.
+  - Behavior:
+    - If playlist is provided without track, command sets/clears active playlist for /play search.
+    - If track is provided and music is already playing, track is added to priority queue.
+    - If track is provided and nothing is playing, queue is replaced with this track and playback starts.
+
+- /play_outdated find:<text_or_url>
+  - Purpose: legacy/alternative play command kept in project.
+  - Options:
+    - find (string, required) — song name or supported URL.
+  - Note: this command is separate from /play and may use older lookup/playback flow.
+
+- /queue action:<auto|queue|clear|next|previous|shuffle|pause|resume|stop> [value] [random]
+  - Purpose: manage queue and playback state.
+  - Options:
+    - action (string, required) — selected queue action.
+    - value (boolean, optional) — used by action:auto (true/false).
+    - random (boolean, optional) — used by action:auto; shuffles selected source before start.
+  - Actions:
+    - queue — show paginated queue (priority + main queue).
+    - auto — enable/disable automatic queue mode.
+      - If no playlists were selected via /playlist, auto uses all tracks.
+      - If playlists are selected via /playlist, auto uses only selected playlists.
+    - clear — clear queue and stop/cleanup playback state.
+    - next — skip current track and move to next available track.
+    - previous — enqueue previous track from history.
+    - shuffle — shuffle current main queue.
+    - pause — pause current playback.
+    - resume — resume paused playback (or start queue if possible).
+    - stop — stop playback and disconnect from voice channel.
+
+- /playlist action:<add/remove|show|clear> [playlist]
+  - Purpose: manage playlist selection source for /queue auto.
+  - Options:
+    - action (string, required) — playlist management action.
+    - playlist (string, optional, autocomplete) — playlist name or every.
+  - Actions:
+    - show — display currently selected playlists for auto queue.
+    - clear — clear selected playlists (auto queue falls back to all tracks).
+    - add/remove — toggle one playlist:
+      - first select adds playlist,
+      - selecting the same playlist again removes it.
+      - playlist:every adds all playlists at once.
+
+- /push
+  - Purpose: force-play local push.mp3 on loop.
+  - Behavior: clears queue to single push track, enables loop for that track, starts playback. Stop with /queue action:stop.
+
+Moderation commands:
+
+- /ban target:<user> [time] [reason]
+  - Purpose: ban member.
+  - Required permission: Ban Members.
+  - Options:
+    - target (user, required)
+    - time (integer, optional) — intended as delete-message days (1-7)
+    - reason (string, optional)
+
+- /kick target:<user> [reason]
+  - Purpose: kick member.
+  - Required permission: Kick Members.
+  - Options:
+    - target (user, required)
+    - reason (string, optional)
+
+- /clear [amount]
+  - Purpose: delete messages from current channel.
+  - Required permission: Manage Messages.
+  - Options:
+    - amount (integer, optional, 1-100) — how many messages to delete.
+  - Behavior:
+    - If amount is provided, deletes up to that amount.
+    - If amount is omitted, deletes messages in batches until channel history is cleaned as far as API allows.
+
+- /settings [queue_channel] [notification_channel] [welcome_channel] [clear_queue_channel] [clear_notification_channel] [clear_welcome_channel]
+  - Purpose: configure guild channel mappings used by bot notifications/features.
+  - Access: Administrator or user ID present in allowUsers config.
+  - Behavior:
+    - With no options: shows current mappings.
+    - With channel options: sets mappings.
+    - With clear booleans: removes selected mappings.
+
+- /restart
+  - Purpose: restart bot process through PM2.
+  - Access: user ID must be in allowUsers.
+  - Behavior: executes pm2 restart Eppy.
+
+Tools commands:
+
+- /help
+  - Purpose: open interactive help embed with command categories.
+
+- /ping
+  - Purpose: show API latency and client ping.
+
+- /refresh
+  - Purpose: refresh slash command registration on the running bot.
+
+- /join
+  - Purpose: join your current voice channel.
+  - Behavior: requires caller to be in a voice channel.
+
+- /database
+  - Purpose: quick database debug/info command for current guild profile document.
+
+Misc commands:
+
+- /pet action:<pet|ranking>
+  - pet: pets the bot, updates presence, increments user pet counter (with cooldown for non-allowlisted users).
+  - ranking: displays top petters on current guild.
+
+- /roulette action:<shoot|roll|quit|lives|rank>
+  - lives: show your current lives and coins.
+  - rank: show roulette leaderboard.
+  - shoot: play one roulette round.
+  - roll: roll cylinder without shooting.
+  - quit: quit current run and claim coins from current rounds.
+
 Common tasks:
 
 - Register slash commands: run your command registration script or use your deployment flow to sync commands with Discord.

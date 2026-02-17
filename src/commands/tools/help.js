@@ -36,6 +36,11 @@ const pages = () => {
         "- `shuffle` — shuffle the main queue (priority queue is not shuffled). Example: `/queue shuffle`.\n" +
         "- `previous` — play the previous track from history (if available). Example: `/queue previous`.\n" +
         "- `stop` — stop playback and disconnect bot from voice. Example: `/queue stop`.\n\n" +
+        "**/playlist <action> [playlist]** — Select source playlists for `/queue auto`:\n" +
+        "- `show` — show currently selected playlists for auto queue.\n" +
+        "- `clear` — clear selected playlists (auto queue will use all tracks).\n" +
+        "- `add/remove playlist:<name>` — toggle one playlist (add if missing, remove if already selected).\n" +
+        "- `add/remove playlist:every` — add all playlists at once.\n\n" +
         "Priority queue behavior:\n" +
         "- Priority queue holds tracks added while something is playing.\n" +
         "- It is FIFO: items play in the order they were added.\n" +
