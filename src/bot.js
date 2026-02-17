@@ -59,15 +59,15 @@ async function monitorUsage() {
   }
 }
 
-async function logUsage() {
-  setInterval(async () => {
-    const stats = await pidusage(process.pid);
-
-    logger.info(`📊 Zużycie zasobów:
-      🖥️ CPU: ${stats.cpu.toFixed(2)}%
-      🏗️ RAM: ${(stats.memory / 1024 / 1024).toFixed(2)} MB`);
-  }, 60000);
-}
+//async function logUsage() {
+//  setInterval(async () => {
+//    const stats = await pidusage(process.pid);
+//
+//    logger.info(`📊 Zużycie zasobów:
+//      🖥️ CPU: ${stats.cpu.toFixed(2)}%
+//      🏗️ RAM: ${(stats.memory / 1024 / 1024).toFixed(2)} MB`);
+//  }, 60000);
+//}
 
 client.handleEvents();
 client.once("ready", async () => {
@@ -75,7 +75,7 @@ client.once("ready", async () => {
 });
 client.login(config.token);
 
-logUsage();
+//logUsage();
 setInterval(monitorUsage, 18000);
 
 (async () => {
