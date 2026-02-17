@@ -68,8 +68,8 @@ const pages = () => {
         "- Notes: Executes `pm2 restart Eppy` in the configured environment. Use only when necessary. Example: `/restart` (admin/allowlist only).\n\n" +
         "**/settings**\n" +
         "- Description: Configure server channels and mappings (Admin or allowlisted users).\n" +
-        "- Options: `queue_channel`, `notification_channel`, `welcome_channel` (text channels) or boolean clears: `clear_queue_channel`, `clear_notification_channel`, `clear_welcome_channel`.\n" +
-        "- Notes: If called without options, the command replies with current mappings for the server. Example: `/settings queue_channel:#music notification_channel:#announcements`.",
+        "- Options: `queue_channel`, `notification_channel`, `welcome_channel`, `update_notification_channel` (text channels), `notification_role` (role) or boolean clears: `clear_queue_channel`, `clear_notification_channel`, `clear_welcome_channel`.\n" +
+        "- Notes: If called without options, the command replies with current mappings for the server, including update settings and selection timestamps. Example: `/settings queue_channel:#music update_notification_channel:#updates notification_role:@Updates`.",
     );
 
   const tools = new EmbedBuilder()

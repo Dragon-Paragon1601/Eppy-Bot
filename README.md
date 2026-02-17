@@ -128,18 +128,48 @@ Moderation commands:
     - If amount is provided, deletes up to that amount.
     - If amount is omitted, deletes messages in batches until channel history is cleaned as far as API allows.
 
-- /settings [queue_channel] [notification_channel] [welcome_channel] [clear_queue_channel] [clear_notification_channel] [clear_welcome_channel]
+- /settings [queue_channel] [notification_channel] [welcome_channel] [update_notification_channel] [notification_role] [clear_queue_channel] [clear_notification_channel] [clear_welcome_channel]
   - Purpose: configure guild channel mappings used by bot notifications/features.
   - Access: Administrator or user ID present in allowUsers config.
   - Behavior:
     - With no options: shows current mappings.
     - With channel options: sets mappings.
+    - update_notification_channel: sets channel used by global update broadcasts.
+    - notification_role: sets role ping used by global update broadcasts.
+    - update_notification_channel and notification_role are stored in MySQL together with selection date (`selected_at`).
     - With clear booleans: removes selected mappings.
 
-- /restart
-  - Purpose: restart bot process through PM2.
+- /global_update message:<text> [title] [ping_role] [dry_run]
+  - Purpose: send one global update announcement to all guilds that configured `update_notification_channel`.
+  - Access: only user IDs from allowUsers config.
+  - Options:
+    - message (string, required) — main update content.
+    - title (string, optional) — embed title.
+    - ping_role (boolean, optional) — if true, tries to ping guild configured notification_role; fallback is `@everyone` when role is missing.
+    - dry_run (boolean, optional) — validates targets and returns summary without sending messages.
+  - Behavior: sends a styled embed and returns summary with sent/failed/skipped totals.
+
+- /global_notiffication message:<text> [title] [ping] [dry_run]
+  - Purpose: send one global notification broadcast to all guilds that configured `notification_channel`.
+  - Access: only user IDs from allowUsers config.
+  - Options:
+    - message (string, required) — main notification content.
+    - title (string, optional) — embed title.
+    - ping (boolean, optional) — if true, always pings `@everyone` in target channel.
+    - dry_run (boolean, optional) — validates targets and returns summary without sending messages.
+  - Behavior: sends a styled embed and returns summary with sent/failed/skipped totals.
+
+- /restart [notify] [ping] [delay]
+  - Purpose: restart bot process through PM2, optionally with global restart notice.
   - Access: user ID must be in allowUsers.
-  - Behavior: executes pm2 restart Eppy.
+  - Options:
+    - notify (boolean, optional) — sends automatic global notice to all configured `notification_channel` targets.
+    - ping (boolean, optional) — when notify is enabled, includes `@everyone` ping.
+    - delay (integer, optional, 0-3600) — delays restart by X seconds.
+  - Behavior:
+    - If `notify:true`, bot sends one randomly selected prebuilt restart message template before restarting.
+    - Message includes restart delay/ETA information.
+    - Restart executes as `pm2 restart Eppy` after the selected delay.
 
 Tools commands:
 

@@ -29,6 +29,20 @@ CREATE TABLE IF NOT EXISTS welcome_channels (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Update notification channels mapping (guild -> channel id)
+CREATE TABLE IF NOT EXISTS update_notification_channels (
+  guild_id VARCHAR(32) NOT NULL PRIMARY KEY,
+  update_notification_channel_id VARCHAR(32) NOT NULL,
+  selected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Update notification role mapping (guild -> role id)
+CREATE TABLE IF NOT EXISTS update_notification_roles (
+  guild_id VARCHAR(32) NOT NULL PRIMARY KEY,
+  notification_role_id VARCHAR(32) NOT NULL,
+  selected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Server information table
 CREATE TABLE IF NOT EXISTS servers (
   id VARCHAR(32) NOT NULL PRIMARY KEY,
