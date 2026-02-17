@@ -20,8 +20,6 @@ const {
   pause,
   resume,
 } = require("../../functions/handlers/handleMusic");
-const path = require("path");
-const fs = require("fs");
 const logger = require("../../logger");
 let players = require("../../functions/handlers/handleMusic").players;
 let connections = require("../../functions/handlers/handleMusic").connections;
@@ -324,38 +322,11 @@ module.exports = {
         }
 
         // Otherwise (value === true OR value === null) -> enable auto immediately
-        // enable auto: load all available tracks from non-playlist sources, or use full playlist if one is selected
-        const playlist = musicHandler.getPlaylist(guildId);
-        let tracks = [];
-        const musicDir = path.join(__dirname, "music");
-
-        if (playlist) {
-          // when a playlist is explicitly selected we do NOT limit the number of tracks
-          tracks = musicHandler.listPlaylistTracks(playlist);
-        } else {
-          // collect from root and playlists
-          if (fs.existsSync(musicDir)) {
-            tracks = tracks.concat(
-              fs
-                .readdirSync(musicDir)
-                .filter((f) => f.toLowerCase().endsWith(".mp3"))
-                .map((f) => path.join(musicDir, f)),
-            );
-            const items = fs.readdirSync(musicDir);
-            for (const item of items) {
-              const full = path.join(musicDir, item);
-              if (fs.existsSync(full) && fs.statSync(full).isDirectory()) {
-                tracks = tracks.concat(
-                  fs
-                    .readdirSync(full)
-                    .filter((f) => f.toLowerCase().endsWith(".mp3"))
-                    .map((f) => path.join(full, f)),
-                );
-              }
-            }
-          }
-          // do not slice here; we'll optionally shuffle first and then limit to 150 below
-        }
+        // Source is now controlled by /playlist command:
+        // - no selected playlists => everything
+        // - selected playlists => only selected ones
+        const selectedPlaylists = musicHandler.getAutoPlaylists(guildId);
+        let tracks = musicHandler.getAutoQueueTracks(guildId);
 
         if (!tracks || tracks.length === 0)
           return interaction.reply({
@@ -382,8 +353,12 @@ module.exports = {
 
         if (!isPlay(guildId)) await playNext(guildId, interaction);
 
+        const sourceInfo = selectedPlaylists.length
+          ? `from selected playlists (${selectedPlaylists.length})`
+          : "from all tracks";
+
         return interaction.reply({
-          content: `✅ Auto enabled (${tracks.length} tracks)`,
+          content: `✅ Auto enabled (${tracks.length} tracks, ${sourceInfo})`,
           ephemeral: true,
         });
       } catch (err) {

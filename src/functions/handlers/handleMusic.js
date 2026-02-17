@@ -37,6 +37,7 @@ const randomModeMap = new Map();
 const loopQueueMap = new Map();
 const loopSourceMap = new Map();
 const playlistMap = new Map(); // guildId -> playlist name
+const autoPlaylistsMap = new Map(); // guildId -> Set(playlist names) for /queue auto source
 const randomTypeMap = new Map(); // guildId -> 'off'|'from_playlist'|'playlist'|'all'
 const progressIntervalsMap = new Map(); // guildId -> intervalId (for more reliable cleanup)
 const skipPreviousRecordMap = new Map();
@@ -137,6 +138,87 @@ function listPlaylistTracks(playlistName) {
     logger.error(`listPlaylistTracks error: ${err}`);
     return [];
   }
+}
+
+function getAutoPlaylists(guildId) {
+  const selected = autoPlaylistsMap.get(guildId);
+  if (!selected) return [];
+  return Array.from(selected);
+}
+
+function toggleAutoPlaylist(guildId, playlistName) {
+  const available = listPlaylists();
+  const normalized = (playlistName || "").trim().toLowerCase();
+  const matched = available.find((p) => p.toLowerCase() === normalized);
+  if (!matched) return { ok: false, exists: false, added: false };
+
+  let selected = autoPlaylistsMap.get(guildId);
+  if (!selected) {
+    selected = new Set();
+    autoPlaylistsMap.set(guildId, selected);
+  }
+
+  if (selected.has(matched)) {
+    selected.delete(matched);
+    if (selected.size === 0) autoPlaylistsMap.delete(guildId);
+    return { ok: true, exists: true, added: false, playlist: matched };
+  }
+
+  selected.add(matched);
+  return { ok: true, exists: true, added: true, playlist: matched };
+}
+
+function clearAutoPlaylists(guildId) {
+  autoPlaylistsMap.delete(guildId);
+}
+
+function selectAllAutoPlaylists(guildId) {
+  const available = listPlaylists();
+  if (!available.length) {
+    autoPlaylistsMap.delete(guildId);
+    return [];
+  }
+
+  autoPlaylistsMap.set(guildId, new Set(available));
+  return available;
+}
+
+function getAutoQueueTracks(guildId) {
+  const musicDir = path.join(__dirname, "../../commands/music/music");
+  let tracks = [];
+  const selected = getAutoPlaylists(guildId);
+
+  if (!fs.existsSync(musicDir)) return [];
+
+  if (!selected.length) {
+    tracks = tracks.concat(
+      fs
+        .readdirSync(musicDir)
+        .filter((f) => f.toLowerCase().endsWith(".mp3"))
+        .map((f) => path.join(musicDir, f)),
+    );
+
+    const items = fs.readdirSync(musicDir);
+    for (const item of items) {
+      const full = path.join(musicDir, item);
+      if (fs.existsSync(full) && fs.statSync(full).isDirectory()) {
+        tracks = tracks.concat(
+          fs
+            .readdirSync(full)
+            .filter((f) => f.toLowerCase().endsWith(".mp3"))
+            .map((f) => path.join(full, f)),
+        );
+      }
+    }
+
+    return tracks;
+  }
+
+  for (const playlist of selected) {
+    tracks = tracks.concat(listPlaylistTracks(playlist));
+  }
+
+  return tracks;
 }
 
 // Random mode type helpers
@@ -998,6 +1080,11 @@ module.exports = {
   getPlaylist,
   listPlaylists,
   listPlaylistTracks,
+  getAutoPlaylists,
+  toggleAutoPlaylist,
+  clearAutoPlaylists,
+  selectAllAutoPlaylists,
+  getAutoQueueTracks,
   setRandomType,
   getRandomType,
   stopAndCleanup,
