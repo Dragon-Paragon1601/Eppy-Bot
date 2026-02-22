@@ -16,6 +16,7 @@ This file explains required configuration values and what each part of the repos
 - DB_USER: MySQL username.
 - DB_PASSWORD: MySQL password.
 - DB_NAME: MySQL database name.
+- MUSIC_DIR: (optional) absolute or project-relative path to your music root folder (the folder that contains mp3 files and playlist subfolders). If not set, bot uses the old default inside repository: `src/commands/music/music`.
 
 Files and folders overview:
 

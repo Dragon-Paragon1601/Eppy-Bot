@@ -112,9 +112,17 @@ function getPlaylist(guildId) {
   return playlistMap.get(guildId) || null;
 }
 
+function getMusicBaseDir() {
+  const configured = (config.MUSIC_DIR || "").trim();
+  if (!configured) return path.join(__dirname, "../../commands/music/music");
+  return path.isAbsolute(configured)
+    ? configured
+    : path.resolve(process.cwd(), configured);
+}
+
 function listPlaylists() {
   try {
-    const musicDir = path.join(__dirname, "../../commands/music/music");
+    const musicDir = getMusicBaseDir();
     if (!fs.existsSync(musicDir)) return [];
     return fs
       .readdirSync(musicDir)
@@ -127,7 +135,7 @@ function listPlaylists() {
 
 function listPlaylistTracks(playlistName) {
   try {
-    const musicDir = path.join(__dirname, "../../commands/music/music");
+    const musicDir = getMusicBaseDir();
     const dir = playlistName ? path.join(musicDir, playlistName) : musicDir;
     if (!fs.existsSync(dir)) return [];
     return fs
@@ -184,7 +192,7 @@ function selectAllAutoPlaylists(guildId) {
 }
 
 function getAutoQueueTracks(guildId) {
-  const musicDir = path.join(__dirname, "../../commands/music/music");
+  const musicDir = getMusicBaseDir();
   let tracks = [];
   const selected = getAutoPlaylists(guildId);
 
@@ -1076,6 +1084,7 @@ module.exports = {
   clearNotificationChannel,
   getNotificationChannel,
   sendNotification,
+  getMusicBaseDir,
   setPlaylist,
   getPlaylist,
   listPlaylists,

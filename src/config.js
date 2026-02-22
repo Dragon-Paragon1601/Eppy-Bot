@@ -13,4 +13,5 @@ module.exports = {
   DB_USER: process.env.DB_USER,
   DB_PASS: process.env.DB_PASSWORD,
   DB_NAME: process.env.DB_NAME,
+  MUSIC_DIR: process.env.MUSIC_DIR,
 };

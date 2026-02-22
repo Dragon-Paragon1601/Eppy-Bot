@@ -11,6 +11,7 @@ const {
   sendNotification,
   setPlaylist,
   getPlaylist,
+  getMusicBaseDir,
   listPlaylists,
   listPlaylistTracks,
   getSongName,
@@ -48,7 +49,7 @@ module.exports = {
           files = listPlaylistTracks(playlist);
         } else {
           // collect tracks from root and all playlists
-          const musicDir = path.join(__dirname, "music");
+          const musicDir = getMusicBaseDir();
           files = [];
           if (fs.existsSync(musicDir)) {
             // root
@@ -131,7 +132,7 @@ module.exports = {
 
       // Find track in chosen playlist or fallback
       const playlist = getPlaylist(guildId);
-      const musicBase = path.join(__dirname, "music");
+      const musicBase = getMusicBaseDir();
       let candidate = `${trackName}.mp3`;
       let filePath = null;
       if (playlist) {
