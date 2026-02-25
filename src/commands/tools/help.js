@@ -15,6 +15,7 @@ const pages = () => {
       "**About**\nEppy-Bot — a lightweight music and moderation assistant for Discord.\n\n" +
         "**Creator**: Dragon-Paragon1601\n" +
         "**Source / Issues**: https://github.com/Dragon-Paragon1601/Eppy-Bot/issues\n" +
+        "**Tips**: You Can buy me a coffe here 🫶 — https://ko-fi.com/DragonOrParagon1601\n" +
         "**Support & Contact**: open an issue on the repository for feature requests or bug reports.\n\n" +
         "Use the categories below to browse and read detailed command docs.",
     );

@@ -2,6 +2,10 @@ Eppy-Bot Configuration Manual
 
 This file explains required configuration values and what each part of the repository is for.
 
+Support / Tips:
+
+- You Can buy me a coffe here 🫶: https://ko-fi.com/DragonOrParagon1601
+
 .env / configuration keys (store in .env in project root):
 
 - token: Discord bot token. Required for bot login.
