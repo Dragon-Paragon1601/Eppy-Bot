@@ -29,7 +29,7 @@ const pages = () => {
         "- If something is playing, the provided track is added to the *priority queue* (FIFO) and will play after the current track finishes.\n\n" +
         "**/queue <action> [options]** — Detailed usage:\n" +
         "- `queue` — show the current queue (first 25 entries). Priority items are marked with ⭐ next to the item.\n" +
-        "- `auto [value:boolean] [random:boolean]` — enable/disable auto-play; `random:true` will randomly shuffle selection. Example: `/queue auto value:true random:true`.\n" +
+        "- `auto [value:boolean] [random:boolean]` — enable/disable auto-play; `random:true` uses smart shuffle (WIP) to push most-played tracks deeper in queue. Example: `/queue auto value:true random:true`.\n" +
         "- `clear` — clear main queue and remove cached audio files. Example: `/queue clear`.\n" +
         "- `resume` — unpause playback if paused; if stopped and queue exists, starts playback. Example: `/queue resume`.\n" +
         "- `pause` — pause current playback. Example: `/queue pause`.\n" +

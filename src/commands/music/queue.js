@@ -19,6 +19,7 @@ const {
   playPrevious,
   pause,
   resume,
+  smartShuffleTracks,
 } = require("../../functions/handlers/handleMusic");
 const logger = require("../../logger");
 let players = require("../../functions/handlers/handleMusic").players;
@@ -326,7 +327,8 @@ module.exports = {
         // - no selected playlists => everything
         // - selected playlists => only selected ones
         const selectedPlaylists = musicHandler.getAutoPlaylists(guildId);
-        let tracks = musicHandler.getAutoQueueTracks(guildId);
+        const sourceTracks = musicHandler.getAutoQueueTracks(guildId);
+        let tracks = sourceTracks.slice();
 
         if (!tracks || tracks.length === 0)
           return interaction.reply({
@@ -334,20 +336,18 @@ module.exports = {
             ephemeral: true,
           });
 
-        // random is a boolean toggle that shuffles the selection if true
+        // random is a boolean toggle that applies smart shuffle if true
         if (random) {
-          for (let i = tracks.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [tracks[i], tracks[j]] = [tracks[j], tracks[i]];
-          }
+          tracks = await smartShuffleTracks(guildId, tracks);
           musicHandler.setRandomMode(guildId, true);
         } else {
           musicHandler.setRandomMode(guildId, false);
         }
 
         await saveQueue(guildId, tracks);
-        // Auto implies looping the chosen source
-        musicHandler.setLoopSource(guildId, tracks);
+        // Auto implies looping the chosen source (keep original source order,
+        // smart shuffle is applied when queue is built/refilled)
+        musicHandler.setLoopSource(guildId, sourceTracks);
         musicHandler.setLoopQueueMode(guildId, true);
         musicHandler.setAutoMode(guildId, true);
 

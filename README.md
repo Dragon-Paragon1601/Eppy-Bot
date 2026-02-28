@@ -84,7 +84,7 @@ Music commands:
   - Options:
     - action (string, required) — selected queue action.
     - value (boolean, optional) — used by action:auto (true/false).
-    - random (boolean, optional) — used by action:auto; shuffles selected source before start.
+    - random (boolean, optional) — used by action:auto; enables smart shuffle (WIP) and pushes most-played tracks deeper in queue.
   - Actions:
     - queue — show paginated queue (priority + main queue).
     - auto — enable/disable automatic queue mode.

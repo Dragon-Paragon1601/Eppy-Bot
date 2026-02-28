@@ -12,6 +12,7 @@ const fs = require("fs");
 const config = require("../../config");
 const pool = require("../../events/mysql/connect");
 const Queue = require("../../schemas/queue");
+const MusicPlayStat = require("../../schemas/musicPlayStat");
 const firstSongStartedMap = new Map();
 let connections = {};
 let idleTimers = {};
@@ -225,6 +226,93 @@ function getAutoQueueTracks(guildId) {
   }
 
   return tracks;
+}
+
+function toTrackKey(songPath) {
+  if (!songPath || typeof songPath !== "string") return null;
+
+  try {
+    const musicBaseDir = getMusicBaseDir();
+    const relative = path.relative(musicBaseDir, songPath);
+    const normalized = (relative || songPath).split(path.sep).join("/");
+    return normalized.toLowerCase();
+  } catch (err) {
+    logger.debug(`toTrackKey fallback for ${songPath}: ${err}`);
+    return songPath.split(path.sep).join("/").toLowerCase();
+  }
+}
+
+function getRecentTrackKeys(guildId, limit = 15) {
+  const history = getHistory(guildId);
+  if (!history || history.length === 0) return new Set();
+
+  const recent = history.slice(-limit).map((songPath) => toTrackKey(songPath));
+  return new Set(recent.filter(Boolean));
+}
+
+async function recordTrackPlayForSmartShuffle(guildId, songPath) {
+  if (!guildId || !songPath) return;
+  if (!getAutoMode(guildId) || !getRandomMode(guildId)) return;
+
+  const trackKey = toTrackKey(songPath);
+  if (!trackKey) return;
+
+  try {
+    await MusicPlayStat.findOneAndUpdate(
+      { guildId, trackKey },
+      { $inc: { playCount: 1 }, $set: { lastPlayedAt: new Date() } },
+      { upsert: true },
+    );
+  } catch (err) {
+    logger.error(`recordTrackPlayForSmartShuffle error for ${guildId}: ${err}`);
+  }
+}
+
+async function smartShuffleTracks(guildId, tracks) {
+  if (!Array.isArray(tracks) || tracks.length <= 1) return tracks || [];
+
+  const trackKeys = tracks.map((songPath) => toTrackKey(songPath));
+  const uniqueKeys = Array.from(new Set(trackKeys.filter(Boolean)));
+
+  let stats = [];
+  if (uniqueKeys.length > 0) {
+    try {
+      stats = await MusicPlayStat.find(
+        { guildId, trackKey: { $in: uniqueKeys } },
+        { trackKey: 1, playCount: 1 },
+      ).lean();
+    } catch (err) {
+      logger.error(
+        `smartShuffleTracks stats fetch error for ${guildId}: ${err}`,
+      );
+    }
+  }
+
+  const playCountByTrack = new Map();
+  for (const stat of stats) {
+    playCountByTrack.set(stat.trackKey, stat.playCount || 0);
+  }
+
+  let maxCount = 0;
+  for (const key of trackKeys) {
+    const count = playCountByTrack.get(key) || 0;
+    if (count > maxCount) maxCount = count;
+  }
+
+  const recentTrackKeys = getRecentTrackKeys(guildId, 15);
+  const scored = tracks.map((songPath, index) => {
+    const key = trackKeys[index];
+    const count = playCountByTrack.get(key) || 0;
+    const normalizedCount = maxCount > 0 ? count / maxCount : 0;
+    const recencyPenalty = recentTrackKeys.has(key) ? 1 : 0;
+    const randomNoise = Math.random() * 0.5;
+    const score = normalizedCount * 0.85 + recencyPenalty * 1.25 + randomNoise;
+
+    return { songPath, score };
+  });
+
+  scored.sort((a, b) => a.score - b.score);
+  return scored.map((item) => item.songPath);
 }
 
 // Random mode type helpers
@@ -457,9 +545,14 @@ async function queueEmpty(guildId, interaction) {
       loopSourceMap.get(guildId).length > 0
     ) {
       const source = loopSourceMap.get(guildId);
-      await saveQueue(guildId, [...source]);
+      const useSmartShuffle = getAutoMode(guildId) && getRandomMode(guildId);
+      const refilledQueue = useSmartShuffle
+        ? await smartShuffleTracks(guildId, source)
+        : [...source];
+
+      await saveQueue(guildId, refilledQueue);
       logger.debug(
-        `🔁 Looping queue for guild ${guildId}. Refilled ${source.length} tracks.`,
+        `🔁 Looping queue for guild ${guildId}. Refilled ${source.length} tracks${useSmartShuffle ? " (smart shuffle)" : ""}.`,
       );
       try {
         await playNext(guildId, interaction);
@@ -788,6 +881,8 @@ async function playNext(guildId, interaction) {
           pushPreviousQueue(guildId, songPath);
         }
 
+        await recordTrackPlayForSmartShuffle(guildId, songPath);
+
         isPlaying[guildId] = false;
         firstSongStartedMap.set(guildId, false);
         queue = await getQueue(guildId);
@@ -832,6 +927,8 @@ async function playNext(guildId, interaction) {
         } else {
           pushPreviousQueue(guildId, songPath);
         }
+
+        await recordTrackPlayForSmartShuffle(guildId, songPath);
 
         isPlaying[guildId] = false;
         firstSongStartedMap.set(guildId, false);
@@ -1046,6 +1143,7 @@ module.exports = {
   clearAutoPlaylists,
   selectAllAutoPlaylists,
   getAutoQueueTracks,
+  smartShuffleTracks,
   setRandomType,
   getRandomType,
   stopAndCleanup,
