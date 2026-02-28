@@ -18,7 +18,7 @@ Support / Tips:
 - SESSION_SECRET: secret string used for session management (if applicable).
 - DB_HOST: MySQL host for certain features (if used).
 - DB_USER: MySQL username.
-- DB_PASSWORD: MySQL password.
+- DB_PASSWORD: MySQL password (mapped in code to `config.DB_PASS`).
 - DB_NAME: MySQL database name.
 - MUSIC_DIR: (optional) absolute or project-relative path to your music root folder (the folder that contains mp3 files and playlist subfolders). If not set, bot uses the old default inside repository: `src/commands/music/music`.
 
@@ -34,15 +34,23 @@ Files and folders overview:
     - tools/ - Utility commands (ping, refresh, help).
   - events/ - Event handlers for the Discord client (ready, interactionCreate, guild events).
   - functions/ - Internal helper logic and handlers.
-    - handlers/handleMusic.js - Music queue and playback logic (main queue is persisted to MongoDB; priority queue is in-memory).
-    - handlers/handleUsers.js - User persistence helpers.
+    - handlers/handleMusic.js - Music queue and playback logic (main queue is persisted to MongoDB; priority queue is in-memory; now-playing channel mapping is read from MySQL).
+    - handlers/handleUsers.js - Guild user sync helpers (persisted to MySQL).
     - tools/ - Misc helpers (presence, RPC helpers).
-  - schemas/ - Mongoose schemas for queues, users, roulette, etc.
+  - schemas/ - Mongoose schemas used for Mongo-persisted features (queue, pet, roulette, guild).
 
 Database and persistence:
 
-- MongoDB: used to persist the main music queue (src/schemas/queue.js) and some other state. Ensure a running MongoDB instance and configure MONGO_URI or connection in your environment if required by the project (check events/mongo/\* files for connection details).
-- MySQL: used for queue channel lookup in some parts; configure DB\_ env variables in .env.
+- MongoDB: used to persist the main music queue (`src/schemas/queue.js`) and other Mongo-backed game/profile state. Ensure a running MongoDB instance and configure MONGO URI/connection used by the project (`src/events/mongo/*`).
+- MySQL: used for server/channel/user synchronization and channel/role mappings used by moderation/global features.
+  - Core synced tables: `servers`, `users`, `channels`.
+  - Channel mapping tables: `queue_channels`, `notification_channels`, `welcome_channels`, `update_notification_channels`, `update_notification_roles`.
+  - SQL schema is provided in `needed things for your bot configuration/schema.sql`.
+
+Guild sync behavior:
+
+- On bot ready, guild metadata/user snapshot/channel snapshot sync runs once immediately.
+- The same sync runs automatically every 1 hour for all guilds.
 
 How priority queue works:
 

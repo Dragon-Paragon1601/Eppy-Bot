@@ -1,34 +1,18 @@
-const channelSchema = require('../../schemas/channel');
-const logger = require('./../../logger');
+const pool = require("../../events/mysql/connect");
+const logger = require("./../../logger");
 
 module.exports = {
-  name: 'guildAvailable',
+  name: "guildAvailable",
   async execute(guild) {
     try {
       // Pobieramy wszystkie kanały z serwera (tekstowe, głosowe itd.)
       const allChannels = guild.channels.cache;
 
       for (const channel of allChannels.values()) {
-
-        // Sprawdzamy, czy kanał już istnieje w bazie danych
-        const existingChannel = await channelSchema.findOne({ channel_id: channel.id });
-
-        if (!existingChannel) {
-          // Jeśli kanał nie istnieje, zapisujemy go
-          const newChannel = new channelSchema({
-            guild_id: guild.id,
-            channel_id: channel.id,
-            channel_name: channel.name,
-            channel_type: channel.type, // Dodajemy typ kanału
-          });
-
-          await newChannel.save();
-        } else {
-          // Jeśli kanał już istnieje, możemy go zaktualizować
-          existingChannel.channel_name = channel.name;
-          existingChannel.channel_type = channel.type; // Zaktualizowanie typu kanału
-          await existingChannel.save();
-        }
+        await pool.query(
+          "INSERT INTO channels (guild_id, channel_id, channel_name, channel_type) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE channel_name = VALUES(channel_name), channel_type = VALUES(channel_type), updated_at = CURRENT_TIMESTAMP",
+          [guild.id, channel.id, channel.name, String(channel.type)],
+        );
       }
     } catch (error) {
       logger.error(`Błąd zapisu kanałów: ${error}`);
@@ -38,24 +22,21 @@ module.exports = {
   // Usuwanie kanału
   async deleteChannel(channelId) {
     try {
-      const channel = await channelSchema.findOne({ channel_id: channelId });
-      if (channel) {
-        await channelSchema.deleteOne({ channel_id: channelId });
-      } else {
-      }
+      await pool.query("DELETE FROM channels WHERE channel_id = ?", [
+        channelId,
+      ]);
     } catch (error) {
+      logger.error(`Błąd usuwania kanału: ${error}`);
     }
   },
 
   // Aktualizacja nazwy kanału
   async updateChannelName(channelId, newName) {
     try {
-      const channel = await channelSchema.findOne({ channel_id: channelId });
-      if (channel) {
-        channel.channel_name = newName;
-        await channel.save();
-      } else {
-      }
+      await pool.query(
+        "UPDATE channels SET channel_name = ?, updated_at = CURRENT_TIMESTAMP WHERE channel_id = ?",
+        [newName, channelId],
+      );
     } catch (error) {
       logger.error(`Błąd aktualizacji nazwy kanału: ${error}`);
     }

@@ -1,4 +1,4 @@
-const User = require("../../schemas/users");
+const pool = require("../../events/mysql/connect");
 const logger = require("../../logger");
 
 async function saveAllGuildUsers(guild) {
@@ -22,34 +22,20 @@ async function saveAllGuildUsers(guild) {
         adminPrem = 4;
       }
 
-      // Check if the user already exists in the database
-      const existingUser = await User.findOne({
-        guild_id: guild.id,
-        user_id: member.id,
-      });
-
-      if (existingUser) {
-        // If the user exists, update the data
-        existingUser.admin_prem = adminPrem;
-        existingUser.username = member.user.username;
-        existingUser.guild_name = guild.name; // Aktualizujemy nazwę serwera
-        existingUser.guild_icon = guild.iconURL() || null; // Aktualizujemy ikonę serwera
-        await existingUser.save();
-      } else {
-        // If the user does not exist, add a new user
-        const newUser = new User({
-          guild_id: guild.id,
-          user_id: member.id,
-          username: member.user.username,
-          admin_prem: adminPrem,
-          guild_name: guild.name, // Dodajemy nazwę serwera
-          guild_icon: guild.iconURL() || null, // Dodajemy ikonę serwera
-        });
-        await newUser.save();
-      }
+      await pool.query(
+        "INSERT INTO users (guild_id, user_id, admin_prem, username, guild_name, guild_icon) VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE admin_prem = VALUES(admin_prem), username = VALUES(username), guild_name = VALUES(guild_name), guild_icon = VALUES(guild_icon), updated_at = CURRENT_TIMESTAMP",
+        [
+          guild.id,
+          member.id,
+          adminPrem,
+          member.user.username,
+          guild.name,
+          guild.iconURL() || null,
+        ],
+      );
     }
   } catch (error) {
-    logger.error("[ERROR] Error saving users to MongoDB:", error);
+    logger.error(`[ERROR] Error saving users to MySQL: ${error}`);
   }
 }
 

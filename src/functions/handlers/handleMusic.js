@@ -10,10 +10,8 @@ const logger = require("./../../logger");
 const mm = require("music-metadata");
 const fs = require("fs");
 const config = require("../../config");
-const mysql = require("mysql2/promise");
 const pool = require("../../events/mysql/connect");
 const Queue = require("../../schemas/queue");
-const QueueChannel = require("../../schemas/queueChannel");
 const firstSongStartedMap = new Map();
 let connections = {};
 let idleTimers = {};
@@ -872,57 +870,14 @@ async function playNext(guildId, interaction) {
 
 // Get the queue channel for a guild
 async function getQueueChannel(guildId) {
-  const query = "SELECT * FROM queue_channels WHERE guild_id = ?";
   try {
-    // Create database connection (or use existing one)
-    const connection = await mysql.createConnection({
-      host: config.DB_HOST,
-      user: config.DB_USER,
-      password: config.DB_PASS,
-      database: config.DB_NAME,
-    });
-
-    const [results] = await connection.execute(query, [guildId]);
-    if (results.length > 0) {
-      return results[0].queue_channel_id;
-    } else {
-      return null;
-    }
+    const [results] = await pool.query(
+      "SELECT queue_channel_id FROM queue_channels WHERE guild_id = ?",
+      [guildId],
+    );
+    return results.length > 0 ? results[0].queue_channel_id : null;
   } catch (err) {
-    console.error("Query error:", err);
-    throw err;
-  }
-}
-
-// Notification channel (Mongo-backed)
-async function setNotificationChannel(guildId, channelId) {
-  try {
-    let doc = await QueueChannel.findOne({ guildId });
-    if (!doc) {
-      doc = new QueueChannel({ guildId, channelId });
-    } else {
-      doc.channelId = channelId;
-    }
-    await doc.save();
-  } catch (err) {
-    logger.error(`Error setting notification channel for ${guildId}: ${err}`);
-  }
-}
-
-async function clearNotificationChannel(guildId) {
-  try {
-    await QueueChannel.deleteOne({ guildId });
-  } catch (err) {
-    logger.error(`Error clearing notification channel for ${guildId}: ${err}`);
-  }
-}
-
-async function getNotificationChannel(guildId) {
-  try {
-    const doc = await QueueChannel.findOne({ guildId });
-    return doc ? doc.channelId : null;
-  } catch (err) {
-    logger.error(`Error fetching notification channel for ${guildId}: ${err}`);
+    logger.error(`Error fetching queue channel for ${guildId}: ${err}`);
     return null;
   }
 }
@@ -930,7 +885,7 @@ async function getNotificationChannel(guildId) {
 // Send notification to configured channel if present, otherwise fall back to interaction.channel
 async function sendNotification(guildId, interaction, content, options = {}) {
   try {
-    const channelId = await getNotificationChannel(guildId);
+    const channelId = await getQueueChannel(guildId);
     if (channelId) {
       try {
         const ch = await interaction.guild.channels.fetch(channelId);
@@ -1080,9 +1035,6 @@ module.exports = {
   setLoopSource,
   clearLoopSource,
   getLoopSource,
-  setNotificationChannel,
-  clearNotificationChannel,
-  getNotificationChannel,
   sendNotification,
   getMusicBaseDir,
   setPlaylist,

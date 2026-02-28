@@ -15,6 +15,32 @@ CREATE TABLE IF NOT EXISTS queue_channels (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Users mapping (guild + user -> permissions/profile snapshot)
+CREATE TABLE IF NOT EXISTS users (
+  guild_id VARCHAR(32) NOT NULL,
+  user_id VARCHAR(32) NOT NULL,
+  admin_prem TINYINT NOT NULL DEFAULT 0,
+  username VARCHAR(255) NOT NULL,
+  guild_name VARCHAR(255) NOT NULL,
+  guild_icon VARCHAR(512) NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (guild_id, user_id),
+  KEY idx_users_user_id (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Channels mapping (guild + channel -> channel snapshot)
+CREATE TABLE IF NOT EXISTS channels (
+  guild_id VARCHAR(32) NOT NULL,
+  channel_id VARCHAR(32) NOT NULL,
+  channel_name VARCHAR(255) NOT NULL,
+  channel_type VARCHAR(64) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (guild_id, channel_id),
+  KEY idx_channels_channel_id (channel_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Notification channels mapping (guild -> channel id)
 CREATE TABLE IF NOT EXISTS notification_channels (
   guild_id VARCHAR(32) NOT NULL PRIMARY KEY,
