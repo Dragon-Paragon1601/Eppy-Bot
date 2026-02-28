@@ -79,7 +79,7 @@ Music commands:
     - find (string, required) — song name or supported URL.
   - Note: this command is separate from /play and may use older lookup/playback flow.
 
-- /queue action:<auto|queue|clear|next|previous|shuffle|pause|resume|stop> [value] [random]
+- /queue action:<auto|queue|statistic|clear|next|previous|shuffle|pause|resume|stop> [value] [random]
   - Purpose: manage queue and playback state.
   - Options:
     - action (string, required) — selected queue action.
@@ -87,6 +87,7 @@ Music commands:
     - random (boolean, optional) — used by action:auto; enables smart shuffle (WIP) and pushes most-played tracks deeper in queue.
   - Actions:
     - queue — show paginated queue (priority + main queue).
+    - statistic — show TOP 10 najczęściej odtwarzanych utworów dla aktualnej gildii (na bazie zebranych statystyk smart shuffle).
     - auto — enable/disable automatic queue mode.
       - If no playlists were selected via /playlist, auto uses all tracks.
       - If playlists are selected via /playlist, auto uses only selected playlists.
@@ -110,6 +111,12 @@ Music commands:
       - first select adds playlist,
       - selecting the same playlist again removes it.
       - playlist:every adds all playlists at once.
+
+- /smartshuffle action:<clear>
+  - Purpose: administracyjny reset smart shuffle dla aktualnej gildii.
+  - Access: Administrator lub użytkownik z allowUsers.
+  - Actions:
+    - clear — usuwa z MongoDB historię/statystyki smart shuffle dla tej gildii i resetuje runtime state (`auto/random/loop source`) powiązany ze smart shuffle.
 
 - /push
   - Purpose: force-play local push.mp3 on loop.

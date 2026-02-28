@@ -29,6 +29,7 @@ const pages = () => {
         "- If something is playing, the provided track is added to the *priority queue* (FIFO) and will play after the current track finishes.\n\n" +
         "**/queue <action> [options]** — Detailed usage:\n" +
         "- `queue` — show the current queue (first 25 entries). Priority items are marked with ⭐ next to the item.\n" +
+        "- `statistic` — show TOP 10 most-played tracks for this guild from collected smart-shuffle stats.\n" +
         "- `auto [value:boolean] [random:boolean]` — enable/disable auto-play; `random:true` uses smart shuffle (WIP) to push most-played tracks deeper in queue. Example: `/queue auto value:true random:true`.\n" +
         "- `clear` — clear main queue and remove cached audio files. Example: `/queue clear`.\n" +
         "- `resume` — unpause playback if paused; if stopped and queue exists, starts playback. Example: `/queue resume`.\n" +
@@ -37,6 +38,8 @@ const pages = () => {
         "- `shuffle` — shuffle the main queue (priority queue is not shuffled). Example: `/queue shuffle`.\n" +
         "- `previous` — play the previous track from history (if available). Example: `/queue previous`.\n" +
         "- `stop` — stop playback and disconnect bot from voice. Example: `/queue stop`.\n\n" +
+        "**/smartshuffle <action>**\n" +
+        "- `clear` — admin command that clears smart shuffle stats for this guild and resets auto/random smart-shuffle runtime state. Example: `/smartshuffle action:clear`.\n\n" +
         "**/playlist <action> [playlist]** — Select source playlists for `/queue auto`:\n" +
         "- `show` — show currently selected playlists for auto queue.\n" +
         "- `clear` — clear selected playlists (auto queue will use all tracks).\n" +

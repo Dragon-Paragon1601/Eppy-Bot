@@ -5,6 +5,8 @@ const {
   ButtonBuilder,
   ButtonStyle,
 } = require("discord.js");
+const path = require("path");
+const MusicPlayStat = require("../../schemas/musicPlayStat");
 const {
   getQueue,
   playNext,
@@ -20,6 +22,7 @@ const {
   pause,
   resume,
   smartShuffleTracks,
+  getMusicBaseDir,
 } = require("../../functions/handlers/handleMusic");
 const logger = require("../../logger");
 let players = require("../../functions/handlers/handleMusic").players;
@@ -45,6 +48,7 @@ module.exports = {
           { name: "pause", value: "pause" },
           { name: "resume", value: "resume" },
           { name: "stop", value: "stop" },
+          { name: "statistic", value: "statistic" },
         ),
     )
     .addBooleanOption((option) =>
@@ -195,6 +199,80 @@ module.exports = {
       });
 
       return;
+    }
+
+    if (action === "statistic") {
+      try {
+        const topStats = await MusicPlayStat.find({ guildId })
+          .sort({ playCount: -1, lastPlayedAt: -1 })
+          .limit(10)
+          .lean();
+
+        if (!topStats || topStats.length === 0) {
+          return interaction.reply({
+            content:
+              "📊 Brak statystyk odtworzeń dla tej gildii. Włącz `/queue auto random:true`, aby zacząć zbierać dane.",
+            ephemeral: true,
+          });
+        }
+
+        const rankIcons = ["🥇", "🥈", "🥉"];
+        const musicBaseDir = getMusicBaseDir();
+
+        const lines = await Promise.all(
+          topStats.map(async (item, index) => {
+            const keyRaw = (item.trackKey || "").split("/").join(path.sep);
+            const keyParts = keyRaw.split(path.sep).filter(Boolean);
+            const isAbsolute = path.isAbsolute(keyRaw);
+            const fullPath = isAbsolute
+              ? keyRaw
+              : path.join(musicBaseDir, keyRaw);
+
+            let trackName = null;
+            try {
+              trackName = await getSongName(fullPath);
+            } catch (err) {
+              logger.debug(
+                `statistic getSongName failed for ${fullPath}: ${err}`,
+              );
+            }
+
+            if (!trackName) {
+              trackName = path
+                .basename(keyRaw || item.trackKey || "Unknown", ".mp3")
+                .replace(/_/g, " ");
+            }
+
+            const folderName =
+              keyParts.length > 1 ? keyParts[keyParts.length - 2] : null;
+            const folderSuffix = folderName ? ` • 📁 ${folderName}` : "";
+
+            const badge = rankIcons[index] || `#${index + 1}`;
+            const playedAt = item.lastPlayedAt
+              ? `<t:${Math.floor(new Date(item.lastPlayedAt).getTime() / 1000)}:R>`
+              : "brak danych";
+
+            return `${badge} **${trackName}**${folderSuffix}\n└ ▶️ Odtworzenia: **${item.playCount || 0}** • Ostatnio: ${playedAt}`;
+          }),
+        );
+
+        const embed = new EmbedBuilder()
+          .setTitle("📊 Top 10 najczęściej odtwarzanych")
+          .setColor(0x5865f2)
+          .setDescription(lines.join("\n\n"))
+          .setFooter({
+            text: "Statystyki per guild • Smart shuffle: WIP",
+          })
+          .setTimestamp(new Date());
+
+        return interaction.reply({ embeds: [embed] });
+      } catch (err) {
+        logger.error(`Error in /queue statistic: ${err}`);
+        return interaction.reply({
+          content: `❌ Error: ${err.message}`,
+          ephemeral: true,
+        });
+      }
     }
 
     if (action === "clear") {
