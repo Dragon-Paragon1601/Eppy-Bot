@@ -1,241 +1,193 @@
-Eppy-Bot Configuration Manual
+# 🎵 Eppy-Bot
 
-This file explains required configuration values and what each part of the repository is for.
+Discord bot with music playback, moderation tools, queue automation, and resilient database fallback.
 
-Support / Tips:
+<p align="left">
+  <img src="https://img.shields.io/badge/Node.js-18%2B-339933?logo=node.js&logoColor=white" alt="Node.js" />
+  <img src="https://img.shields.io/badge/discord.js-v14-5865F2?logo=discord&logoColor=white" alt="discord.js" />
+  <img src="https://img.shields.io/badge/MongoDB-optional-47A248?logo=mongodb&logoColor=white" alt="MongoDB optional" />
+  <img src="https://img.shields.io/badge/MySQL-optional-4479A1?logo=mysql&logoColor=white" alt="MySQL optional" />
+  <img src="https://img.shields.io/badge/PM2-supported-2B037A" alt="PM2" />
+</p>
 
-- You Can buy me a coffe here 🫶: https://ko-fi.com/DragonOrParagon1601
+---
 
-.env / configuration keys (store in .env in project root):
+## 📚 Table of Contents
 
-- token: Discord bot token. Required for bot login.
-- client_ID: Discord application client ID (used for RPC and command registration).
-- databaseToken: MongoDB connection string (optional, bot can run without Mongo).
-- allowlist: comma-separated list of user IDs allowed for privileged/admin actions (optional).
-- DB_HOST: MySQL host (optional, bot can run without MySQL).
-- DB_USER: MySQL username.
-- DB_PASSWORD: MySQL password (mapped in code to `config.DB_PASS`).
-- DB_NAME: MySQL database name.
-- MUSIC_DIR: (optional) absolute or project-relative path to your music root folder (the folder that contains mp3 files and playlist subfolders). If not set, bot uses the old default inside repository: `src/commands/music/music`.
+- [✅ MUST DO before first run](#-must-do-before-first-run)
+- [🔐 .env configuration](#-env-configuration)
+- [🧱 Project structure](#-project-structure)
+- [💾 Database behavior (important)](#-database-behavior-important)
+- [🎧 Queue behavior](#-queue-behavior)
+- [🧩 Slash commands](#-slash-commands)
+- [🚀 Run & deploy](#-run--deploy)
+- [🛠 Troubleshooting](#-troubleshooting)
+- [💙 Support](#-support)
 
-Files and folders overview:
+---
 
-- src/
-  - bot.js - Main bot entry point.
-  - config.js - Loads environment variables and exports config values.
-  - logger.js - Logging wrapper used across the project.
-  - commands/ - All slash command handlers grouped by areas (music, moderation, tools, etc.).
-    - music/ - Play, queue and music-related commands.
-    - moderation/ - Admin/moderation commands (ban, kick, settings, restart).
-    - tools/ - Utility commands (ping, refresh, help).
-  - events/ - Event handlers for the Discord client (ready, interactionCreate, guild events).
-  - functions/ - Internal helper logic and handlers.
-    - handlers/handleMusic.js - Music queue and playback logic (uses storage adapter with MongoDB or in-memory fallback; priority queue is always in-memory).
-    - handlers/handleUsers.js - Guild user sync helpers (persisted to MySQL).
-    - tools/ - Misc helpers (presence, RPC helpers).
-  - schemas/ - Mongoose schemas used for Mongo-persisted features (queue, pet, roulette, musicPlayStat).
-  - database/ - Runtime storage/state layer (`state.js`, `runtimeStore.js`) that enables DB fallback.
+## ✅ MUST DO before first run
 
-Database and persistence:
+1. Install **Node.js LTS** (with npm).
+2. Install dependencies in repository root:
+   - `npm install`
+3. Create `.env` in project root and set at least:
+   - `token`
+   - `client_ID`
+   - `allowlist` (optional but recommended)
+4. (Optional) Configure MongoDB:
+   - set `databaseToken` to your Mongo connection string.
+   - if skipped, bot uses in-memory fallback for queue/pet/roulette/music stats.
+5. (Optional) Configure MySQL:
+   - set `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`.
+   - if skipped, MySQL-backed features run in safe no-db mode.
+6. Prepare music files:
+   - set `MUSIC_DIR` to folder with `.mp3` files (and optional subfolders as playlists),
+   - or use default path: `src/commands/music/music`.
+7. Start bot:
+   - `node src/bot.js` or `node .`
+8. (Recommended for production) PM2:
+   - `npm install -g pm2`
+   - `pm2 start ecosystem.config.js`
 
-- MongoDB: when available, persists queue/game/music-stat data (queue, pet, roulette, musicPlayStat).
-- MongoDB fallback: when MongoDB is missing or connection fails, bot automatically switches these features to in-memory storage (process runtime only).
-- MySQL: used for server/channel/user synchronization and channel/role mappings used by moderation/global features.
-- MySQL fallback: when MySQL is missing or unavailable, bot keeps running in `no-db` mode for MySQL-backed features (queries return empty results / no-op behavior instead of crashing).
-  - Core synced tables: `servers`, `users`, `channels`.
-  - Channel mapping tables: `queue_channels`, `notification_channels`, `welcome_channels`, `update_notification_channels`, `update_notification_roles`.
-  - SQL schema is provided in `needed things for your bot configuration/schema.sql`.
+---
 
-Guild sync behavior:
+## 🔐 .env configuration
 
-- On bot ready, guild metadata/user snapshot/channel snapshot sync runs once immediately.
-- The same sync runs automatically every 1 hour for all guilds.
+| Key             | Required | Description                                         |
+| --------------- | -------- | --------------------------------------------------- |
+| `token`         | ✅       | Discord bot token                                   |
+| `client_ID`     | ✅       | Discord application client ID                       |
+| `allowlist`     | ⚪       | Comma-separated user IDs with elevated access       |
+| `databaseToken` | ⚪       | MongoDB connection string                           |
+| `DB_HOST`       | ⚪       | MySQL host                                          |
+| `DB_USER`       | ⚪       | MySQL user                                          |
+| `DB_PASSWORD`   | ⚪       | MySQL password                                      |
+| `DB_NAME`       | ⚪       | MySQL database name                                 |
+| `MUSIC_DIR`     | ⚪       | Path to music folder (absolute or project-relative) |
 
-How priority queue works:
+> ⚪ Optional means bot still starts without it.
 
-- Priority queue holds tracks added while music is playing.
-- Priority queue is FIFO: items play in the order they were added.
-- When the current track (from main queue) finishes, any items in the priority queue play first; after the priority queue empties, playback continues from the main queue.
-- Priority queue is in-memory and will be lost if the bot restarts.
+---
 
-Detailed list of all available slash commands:
+## 🧱 Project structure
 
-Music commands:
+- `src/bot.js` — main entry point
+- `src/config.js` — environment config mapping
+- `src/logger.js` — logger setup
+- `src/commands/` — slash commands (music, moderation, tools, misc)
+- `src/events/` — Discord and DB event handlers
+- `src/functions/handlers/` — internal business logic
+- `src/schemas/` — Mongoose schemas (`queue`, `pet`, `roulette`, `musicPlayStat`)
+- `src/database/` — runtime storage and DB availability state
+  - `state.js`
+  - `runtimeStore.js`
 
-- /play [track] [playlist]
-  - Purpose: play a single track or set active playlist for track lookup.
-  - Options:
-    - track (string, optional, autocomplete) — track name without .mp3.
-    - playlist (string, optional, autocomplete) — playlist folder name, or none to clear active playlist.
-  - Behavior:
-    - If playlist is provided without track, command sets/clears active playlist for /play search.
-    - If track is provided and music is already playing, track is added to priority queue.
-    - If track is provided and nothing is playing, queue is replaced with this track and playback starts.
+---
 
-- /play_outdated find:<text_or_url>
-  - Purpose: legacy/alternative play command kept in project.
-  - Options:
-    - find (string, required) — song name or supported URL.
-  - Note: this command is separate from /play and may use older lookup/playback flow.
+## 💾 Database behavior (important)
 
-- /queue action:<auto|queue|statistic|clear|next|previous|shuffle|pause|resume|stop> [value] [random]
-  - Purpose: manage queue and playback state.
-  - Options:
-    - action (string, required) — selected queue action.
-    - value (boolean, optional) — used by action:auto (true/false).
-    - random (boolean, optional) — used by action:auto; enables smart shuffle (WIP) and pushes most-played tracks deeper in queue.
-  - Actions:
-    - queue — show paginated queue (priority + main queue).
-    - statistic — show TOP 10 najczęściej odtwarzanych utworów dla aktualnej gildii (na bazie zebranych statystyk smart shuffle).
-    - auto — enable/disable automatic queue mode.
-      - If no playlists were selected via /playlist, auto uses all tracks.
-      - If playlists are selected via /playlist, auto uses only selected playlists.
-    - clear — clear queue and stop/cleanup playback state.
-    - next — skip current track and move to next available track.
-    - previous — enqueue previous track from history.
-    - shuffle — shuffle current main queue.
-    - pause — pause current playback.
-    - resume — resume paused playback (or start queue if possible).
-    - stop — stop playback and disconnect from voice channel.
+### MongoDB
 
-- /playlist action:<add/remove|show|clear> [playlist]
-  - Purpose: manage playlist selection source for /queue auto.
-  - Options:
-    - action (string, required) — playlist management action.
-    - playlist (string, optional, autocomplete) — playlist name or every.
-  - Actions:
-    - show — display currently selected playlists for auto queue.
-    - clear — clear selected playlists (auto queue falls back to all tracks).
-    - add/remove — toggle one playlist:
-      - first select adds playlist,
-      - selecting the same playlist again removes it.
-      - playlist:every adds all playlists at once.
+- When available: persists queue/game/music-stat data.
+- When unavailable: bot auto-switches to **in-memory** mode for those features.
 
-- /smartshuffle action:<clear>
-  - Purpose: administracyjny reset smart shuffle dla aktualnej gildii.
-  - Access: Administrator lub użytkownik z allowUsers.
-  - Actions:
-    - clear — usuwa historię/statystyki smart shuffle dla tej gildii (MongoDB lub fallback in-memory) i resetuje runtime state (`auto/random/loop source`) powiązany ze smart shuffle.
+### MySQL
 
-- /push
-  - Purpose: force-play local push.mp3 on loop.
-  - Behavior: clears queue to single push track, enables loop for that track, starts playback. Stop with /queue action:stop.
+- Used for guild/user/channel sync and notification channel mappings.
+- When unavailable: bot stays online and MySQL operations become safe no-op / empty results.
 
-Moderation commands:
+### SQL schema
 
-- /ban target:<user> [time] [reason]
-  - Purpose: ban member.
-  - Required permission: Ban Members.
-  - Options:
-    - target (user, required)
-    - time (integer, optional) — intended as delete-message days (1-7)
-    - reason (string, optional)
+- See: `needed things for your bot configuration/schema.sql`
 
-- /kick target:<user> [reason]
-  - Purpose: kick member.
-  - Required permission: Kick Members.
-  - Options:
-    - target (user, required)
-    - reason (string, optional)
+---
 
-- /clear [amount]
-  - Purpose: delete messages from current channel.
-  - Required permission: Manage Messages.
-  - Options:
-    - amount (integer, optional, 1-100) — how many messages to delete.
-  - Behavior:
-    - If amount is provided, deletes up to that amount.
-    - If amount is omitted, deletes messages in batches until channel history is cleaned as far as API allows.
+## 🎧 Queue behavior
 
-- /settings [queue_channel] [notification_channel] [welcome_channel] [update_notification_channel] [notification_role] [clear_queue_channel] [clear_notification_channel] [clear_welcome_channel]
-  - Purpose: configure guild channel mappings used by bot notifications/features.
-  - Access: Administrator or user ID present in allowUsers config.
-  - Behavior:
-    - With no options: shows current mappings.
-    - With channel options: sets mappings.
-    - update_notification_channel: sets channel used by global update broadcasts.
-    - notification_role: sets role ping used by global update broadcasts.
-    - update_notification_channel and notification_role are stored in MySQL together with selection date (`selected_at`).
-    - With clear booleans: removes selected mappings.
+- Priority queue is **FIFO**.
+- Priority tracks play before main queue continuation.
+- Priority queue is runtime memory only (cleared on restart).
 
-- /global_update message:<text> [title] [ping_role] [dry_run]
-  - Purpose: send one global update announcement to all guilds that configured `update_notification_channel`.
-  - Access: only user IDs from allowUsers config.
-  - Options:
-    - message (string, required) — main update content.
-    - title (string, optional) — embed title.
-    - ping_role (boolean, optional) — if true, tries to ping guild configured notification_role; fallback is `@everyone` when role is missing.
-    - dry_run (boolean, optional) — validates targets and returns summary without sending messages.
-  - Behavior: sends a styled embed and returns summary with sent/failed/skipped totals.
+---
 
-- /global_notiffication message:<text> [title] [ping] [dry_run]
-  - Purpose: send one global notification broadcast to all guilds that configured `notification_channel`.
-  - Access: only user IDs from allowUsers config.
-  - Options:
-    - message (string, required) — main notification content.
-    - title (string, optional) — embed title.
-    - ping (boolean, optional) — if true, always pings `@everyone` in target channel.
-    - dry_run (boolean, optional) — validates targets and returns summary without sending messages.
-  - Behavior: sends a styled embed and returns summary with sent/failed/skipped totals.
+## 🧩 Slash commands
 
-- /restart [notify] [ping] [delay]
-  - Purpose: restart bot process through PM2, optionally with global restart notice.
-  - Access: user ID must be in allowUsers.
-  - Options:
-    - notify (boolean, optional) — sends automatic global notice to all configured `notification_channel` targets.
-    - ping (boolean, optional) — when notify is enabled, includes `@everyone` ping.
-    - delay (integer, optional, 0-3600) — delays restart by X seconds.
-  - Behavior:
-    - If `notify:true`, bot sends one randomly selected prebuilt restart message template before restarting.
-    - Message includes restart delay/ETA information.
-    - Restart executes as `pm2 restart Eppy` after the selected delay.
+<details>
+<summary><b>🎵 Music commands</b></summary>
 
-Tools commands:
+- `/play [track] [playlist]` — play track or set active playlist context.
+- `/play_outdated find:<text_or_url>` — legacy playback command.
+- `/queue action:<auto|queue|statistic|clear|next|previous|shuffle|pause|resume|stop> [value] [random]`
+  - `queue` — paginated queue view
+  - `statistic` — top played tracks (guild)
+  - `auto` — auto queue mode
+  - `clear` — clear queue + cleanup
+  - `next` / `previous` — navigation
+  - `shuffle` / `pause` / `resume` / `stop` — playback control
+- `/playlist action:<add/remove|show|clear> [playlist]` — manage auto source playlists.
+- `/smartshuffle action:<clear>` — reset smart shuffle data/state.
+- `/push` — force-play local `push.mp3` in loop.
 
-- /help
-  - Purpose: open interactive help embed with command categories.
+</details>
 
-- /ping
-  - Purpose: show API latency and client ping.
+<details>
+<summary><b>🛡 Moderation commands</b></summary>
 
-- /refresh
-  - Purpose: refresh slash command registration on the running bot.
+- `/ban target:<user> [time] [reason]`
+- `/kick target:<user> [reason]`
+- `/clear [amount]`
+- `/settings [queue_channel] [notification_channel] [welcome_channel] [update_notification_channel] [notification_role] [clear_queue_channel] [clear_notification_channel] [clear_welcome_channel]`
+- `/global_update message:<text> [title] [ping_role] [dry_run]`
+- `/global_notiffication message:<text> [title] [ping] [dry_run]`
+- `/restart [notify] [ping] [delay]`
 
-- /join
-  - Purpose: join your current voice channel.
-  - Behavior: requires caller to be in a voice channel.
+</details>
 
-- /database
-  - Purpose: quick database debug/info command for current guild profile document.
+<details>
+<summary><b>🧰 Tools commands</b></summary>
 
-Misc commands:
+- `/help`
+- `/ping`
+- `/refresh`
+- `/join`
+- `/database`
 
-- /pet action:<pet|ranking>
-  - pet: pets the bot, updates presence, increments user pet counter (with cooldown for non-allowlisted users).
-  - ranking: displays top petters on current guild.
+</details>
 
-- /roulette action:<shoot|roll|quit|lives|rank>
-  - lives: show your current lives and coins.
-  - rank: show roulette leaderboard.
-  - shoot: play one roulette round.
-  - roll: roll cylinder without shooting.
-  - quit: quit current run and claim coins from current rounds.
+<details>
+<summary><b>🎮 Misc commands</b></summary>
 
-Common tasks:
+- `/pet action:<pet|ranking>`
+- `/roulette action:<shoot|roll|quit|lives|rank>`
 
-- Register slash commands: run your command registration script or use your deployment flow to sync commands with Discord.
-- Start the bot: `node src/bot.js` (ensure .env is present and dependencies installed).
+</details>
 
-PM2 setup (required for /restart):
+---
 
-- Install PM2 globally: `npm install -g pm2`.
-- Start the bot with the provided PM2 config: `pm2 start ecosystem.config.js`.
-- The process name must be `Eppy` because `/restart` runs `pm2 restart Eppy`.
-- Auto-restart on code changes is enabled by `watch: ["src"]` in ecosystem.config.js.
+## 🚀 Run & deploy
 
-Support and troubleshooting:
+### Local run
 
-- Check logs/ for runtime logs; enable debug mode in logger if you need more details.
-- If audio playback fails, verify @discordjs/voice is installed and your environment supports audio playback.
+- `node src/bot.js`
 
-If you want, I can also create a ready-to-use `.env.example` file and a short checklist for deploying the bot to a server. Let me know which you'd prefer.
+### PM2 (recommended)
+
+- `npm install -g pm2`
+- `pm2 start ecosystem.config.js`
+
+> Process name should stay `Eppy` because `/restart` uses `pm2 restart Eppy`.
+
+---
+
+## 🛠 Troubleshooting
+
+- Check `logs/` for runtime logs.
+- If voice playback fails, verify `@discordjs/voice` dependencies/environment.
+- If commands are missing, re-run command registration (`/refresh` or deployment flow).
+
+---
+
+## 💙 Support
+
+- You can support the project here: https://ko-fi.com/DragonOrParagon1601
