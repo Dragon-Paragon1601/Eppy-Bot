@@ -90,6 +90,21 @@ module.exports = {
     const guildId = interaction.guild.id;
     const memberId = interaction.user.id;
 
+    const ensureColumn = async (table, definition) => {
+      try {
+        await pool.query(`ALTER TABLE ${table} ADD COLUMN ${definition}`);
+      } catch (err) {
+        const message = String(err?.message || "").toLowerCase();
+        if (
+          message.includes("duplicate column") ||
+          message.includes("already exists")
+        ) {
+          return;
+        }
+        throw err;
+      }
+    };
+
     const formatChannelDisplay = async (channelId) => {
       if (!channelId) return "⚪ Not set";
 
@@ -121,6 +136,11 @@ module.exports = {
       const unix = Math.floor(new Date(value).getTime() / 1000);
       if (!Number.isFinite(unix) || unix <= 0) return "—";
       return `<t:${unix}:F>\n<t:${unix}:R>`;
+    };
+
+    const formatSelectedBy = (userId) => {
+      if (!userId) return "—";
+      return `<@${userId}> (${userId})`;
     };
 
     // allow if admin or in allowUsers env
@@ -176,6 +196,54 @@ module.exports = {
         "CREATE TABLE IF NOT EXISTS kick_notification_channels (guild_id VARCHAR(32) NOT NULL PRIMARY KEY, kick_notification_channel_id VARCHAR(32) NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
       );
 
+      await ensureColumn(
+        "queue_channels",
+        "selected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+      );
+      await ensureColumn("queue_channels", "selected_by VARCHAR(32) NULL");
+
+      await ensureColumn(
+        "notification_channels",
+        "selected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+      );
+      await ensureColumn(
+        "notification_channels",
+        "selected_by VARCHAR(32) NULL",
+      );
+
+      await ensureColumn(
+        "welcome_channels",
+        "selected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+      );
+      await ensureColumn("welcome_channels", "selected_by VARCHAR(32) NULL");
+
+      await ensureColumn(
+        "update_notification_channels",
+        "selected_by VARCHAR(32) NULL",
+      );
+      await ensureColumn(
+        "update_notification_roles",
+        "selected_by VARCHAR(32) NULL",
+      );
+
+      await ensureColumn(
+        "ban_notification_channels",
+        "selected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+      );
+      await ensureColumn(
+        "ban_notification_channels",
+        "selected_by VARCHAR(32) NULL",
+      );
+
+      await ensureColumn(
+        "kick_notification_channels",
+        "selected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+      );
+      await ensureColumn(
+        "kick_notification_channels",
+        "selected_by VARCHAR(32) NULL",
+      );
+
       // If no options provided, show current mappings
       if (
         !queueChannel &&
@@ -192,45 +260,57 @@ module.exports = {
         !clearKickNotification
       ) {
         const [qRows] = await pool.query(
-          "SELECT queue_channel_id FROM queue_channels WHERE guild_id = ?",
+          "SELECT queue_channel_id, selected_at, selected_by FROM queue_channels WHERE guild_id = ?",
           [guildId],
         );
         const [nRows] = await pool.query(
-          "SELECT notification_channel_id FROM notification_channels WHERE guild_id = ?",
+          "SELECT notification_channel_id, selected_at, selected_by FROM notification_channels WHERE guild_id = ?",
           [guildId],
         );
         const [wRows] = await pool.query(
-          "SELECT welcome_channel_id FROM welcome_channels WHERE guild_id = ?",
+          "SELECT welcome_channel_id, selected_at, selected_by FROM welcome_channels WHERE guild_id = ?",
           [guildId],
         );
         const [uRows] = await pool.query(
-          "SELECT update_notification_channel_id, selected_at FROM update_notification_channels WHERE guild_id = ?",
+          "SELECT update_notification_channel_id, selected_at, selected_by FROM update_notification_channels WHERE guild_id = ?",
           [guildId],
         );
         const [rRows] = await pool.query(
-          "SELECT notification_role_id, selected_at FROM update_notification_roles WHERE guild_id = ?",
+          "SELECT notification_role_id, selected_at, selected_by FROM update_notification_roles WHERE guild_id = ?",
           [guildId],
         );
         const [bRows] = await pool.query(
-          "SELECT ban_notification_channel_id FROM ban_notification_channels WHERE guild_id = ?",
+          "SELECT ban_notification_channel_id, selected_at, selected_by FROM ban_notification_channels WHERE guild_id = ?",
           [guildId],
         );
         const [kRows] = await pool.query(
-          "SELECT kick_notification_channel_id FROM kick_notification_channels WHERE guild_id = ?",
+          "SELECT kick_notification_channel_id, selected_at, selected_by FROM kick_notification_channels WHERE guild_id = ?",
           [guildId],
         );
 
         const qId = qRows.length ? qRows[0].queue_channel_id : null;
+        const qSelectedAt = qRows.length ? qRows[0].selected_at : null;
+        const qSelectedBy = qRows.length ? qRows[0].selected_by : null;
         const nId = nRows.length ? nRows[0].notification_channel_id : null;
+        const nSelectedAt = nRows.length ? nRows[0].selected_at : null;
+        const nSelectedBy = nRows.length ? nRows[0].selected_by : null;
         const wId = wRows.length ? wRows[0].welcome_channel_id : null;
+        const wSelectedAt = wRows.length ? wRows[0].selected_at : null;
+        const wSelectedBy = wRows.length ? wRows[0].selected_by : null;
         const uId = uRows.length
           ? uRows[0].update_notification_channel_id
           : null;
         const uSelectedAt = uRows.length ? uRows[0].selected_at : null;
+        const uSelectedBy = uRows.length ? uRows[0].selected_by : null;
         const rId = rRows.length ? rRows[0].notification_role_id : null;
         const rSelectedAt = rRows.length ? rRows[0].selected_at : null;
+        const rSelectedBy = rRows.length ? rRows[0].selected_by : null;
         const bId = bRows.length ? bRows[0].ban_notification_channel_id : null;
+        const bSelectedAt = bRows.length ? bRows[0].selected_at : null;
+        const bSelectedBy = bRows.length ? bRows[0].selected_by : null;
         const kId = kRows.length ? kRows[0].kick_notification_channel_id : null;
+        const kSelectedAt = kRows.length ? kRows[0].selected_at : null;
+        const kSelectedBy = kRows.length ? kRows[0].selected_by : null;
 
         const queueDisplay = await formatChannelDisplay(qId);
         const notificationDisplay = await formatChannelDisplay(nId);
@@ -249,37 +329,37 @@ module.exports = {
           .addFields(
             {
               name: "Queue Channel",
-              value: queueDisplay,
+              value: `${queueDisplay}\nSelected: ${formatSelectedAt(qSelectedAt)}\nBy: ${formatSelectedBy(qSelectedBy)}`,
               inline: false,
             },
             {
               name: "Notification Channel",
-              value: notificationDisplay,
+              value: `${notificationDisplay}\nSelected: ${formatSelectedAt(nSelectedAt)}\nBy: ${formatSelectedBy(nSelectedBy)}`,
               inline: false,
             },
             {
               name: "Welcome Channel",
-              value: welcomeDisplay,
+              value: `${welcomeDisplay}\nSelected: ${formatSelectedAt(wSelectedAt)}\nBy: ${formatSelectedBy(wSelectedBy)}`,
               inline: false,
             },
             {
               name: "Update Notification Channel",
-              value: `${updateDisplay}\nSelected: ${formatSelectedAt(uSelectedAt)}`,
+              value: `${updateDisplay}\nSelected: ${formatSelectedAt(uSelectedAt)}\nBy: ${formatSelectedBy(uSelectedBy)}`,
               inline: false,
             },
             {
               name: "Update Notification Role",
-              value: `${roleDisplay}\nSelected: ${formatSelectedAt(rSelectedAt)}`,
+              value: `${roleDisplay}\nSelected: ${formatSelectedAt(rSelectedAt)}\nBy: ${formatSelectedBy(rSelectedBy)}`,
               inline: false,
             },
             {
               name: "Ban Notification Channel",
-              value: banDisplay,
+              value: `${banDisplay}\nSelected: ${formatSelectedAt(bSelectedAt)}\nBy: ${formatSelectedBy(bSelectedBy)}`,
               inline: false,
             },
             {
               name: "Kick Notification Channel",
-              value: kickDisplay,
+              value: `${kickDisplay}\nSelected: ${formatSelectedAt(kSelectedAt)}\nBy: ${formatSelectedBy(kSelectedBy)}`,
               inline: false,
             },
           )
@@ -309,8 +389,8 @@ module.exports = {
             ephemeral: true,
           });
         await pool.query(
-          "INSERT INTO queue_channels (guild_id, queue_channel_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE queue_channel_id = VALUES(queue_channel_id)",
-          [guildId, queueChannel.id],
+          "INSERT INTO queue_channels (guild_id, queue_channel_id, selected_at, selected_by) VALUES (?, ?, CURRENT_TIMESTAMP, ?) ON DUPLICATE KEY UPDATE queue_channel_id = VALUES(queue_channel_id), selected_at = CURRENT_TIMESTAMP, selected_by = VALUES(selected_by)",
+          [guildId, queueChannel.id, memberId],
         );
       }
 
@@ -330,8 +410,8 @@ module.exports = {
             ephemeral: true,
           });
         await pool.query(
-          "INSERT INTO notification_channels (guild_id, notification_channel_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE notification_channel_id = VALUES(notification_channel_id)",
-          [guildId, notificationChannel.id],
+          "INSERT INTO notification_channels (guild_id, notification_channel_id, selected_at, selected_by) VALUES (?, ?, CURRENT_TIMESTAMP, ?) ON DUPLICATE KEY UPDATE notification_channel_id = VALUES(notification_channel_id), selected_at = CURRENT_TIMESTAMP, selected_by = VALUES(selected_by)",
+          [guildId, notificationChannel.id, memberId],
         );
       }
 
@@ -350,8 +430,8 @@ module.exports = {
             ephemeral: true,
           });
         await pool.query(
-          "INSERT INTO welcome_channels (guild_id, welcome_channel_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE welcome_channel_id = VALUES(welcome_channel_id)",
-          [guildId, welcomeChannel.id],
+          "INSERT INTO welcome_channels (guild_id, welcome_channel_id, selected_at, selected_by) VALUES (?, ?, CURRENT_TIMESTAMP, ?) ON DUPLICATE KEY UPDATE welcome_channel_id = VALUES(welcome_channel_id), selected_at = CURRENT_TIMESTAMP, selected_by = VALUES(selected_by)",
+          [guildId, welcomeChannel.id, memberId],
         );
       }
 
@@ -367,16 +447,16 @@ module.exports = {
           });
 
         await pool.query(
-          "INSERT INTO update_notification_channels (guild_id, update_notification_channel_id, selected_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON DUPLICATE KEY UPDATE update_notification_channel_id = VALUES(update_notification_channel_id), selected_at = CURRENT_TIMESTAMP",
-          [guildId, updateNotificationChannel.id],
+          "INSERT INTO update_notification_channels (guild_id, update_notification_channel_id, selected_at, selected_by) VALUES (?, ?, CURRENT_TIMESTAMP, ?) ON DUPLICATE KEY UPDATE update_notification_channel_id = VALUES(update_notification_channel_id), selected_at = CURRENT_TIMESTAMP, selected_by = VALUES(selected_by)",
+          [guildId, updateNotificationChannel.id, memberId],
         );
       }
 
       // notification_role
       if (notificationRole) {
         await pool.query(
-          "INSERT INTO update_notification_roles (guild_id, notification_role_id, selected_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON DUPLICATE KEY UPDATE notification_role_id = VALUES(notification_role_id), selected_at = CURRENT_TIMESTAMP",
-          [guildId, notificationRole.id],
+          "INSERT INTO update_notification_roles (guild_id, notification_role_id, selected_at, selected_by) VALUES (?, ?, CURRENT_TIMESTAMP, ?) ON DUPLICATE KEY UPDATE notification_role_id = VALUES(notification_role_id), selected_at = CURRENT_TIMESTAMP, selected_by = VALUES(selected_by)",
+          [guildId, notificationRole.id, memberId],
         );
       }
 
@@ -398,8 +478,8 @@ module.exports = {
         }
 
         await pool.query(
-          "INSERT INTO ban_notification_channels (guild_id, ban_notification_channel_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE ban_notification_channel_id = VALUES(ban_notification_channel_id)",
-          [guildId, banNotificationChannel.id],
+          "INSERT INTO ban_notification_channels (guild_id, ban_notification_channel_id, selected_at, selected_by) VALUES (?, ?, CURRENT_TIMESTAMP, ?) ON DUPLICATE KEY UPDATE ban_notification_channel_id = VALUES(ban_notification_channel_id), selected_at = CURRENT_TIMESTAMP, selected_by = VALUES(selected_by)",
+          [guildId, banNotificationChannel.id, memberId],
         );
       }
 
@@ -421,8 +501,8 @@ module.exports = {
         }
 
         await pool.query(
-          "INSERT INTO kick_notification_channels (guild_id, kick_notification_channel_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE kick_notification_channel_id = VALUES(kick_notification_channel_id)",
-          [guildId, kickNotificationChannel.id],
+          "INSERT INTO kick_notification_channels (guild_id, kick_notification_channel_id, selected_at, selected_by) VALUES (?, ?, CURRENT_TIMESTAMP, ?) ON DUPLICATE KEY UPDATE kick_notification_channel_id = VALUES(kick_notification_channel_id), selected_at = CURRENT_TIMESTAMP, selected_by = VALUES(selected_by)",
+          [guildId, kickNotificationChannel.id, memberId],
         );
       }
 

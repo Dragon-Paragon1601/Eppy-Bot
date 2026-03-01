@@ -12,6 +12,8 @@ CREATE TABLE IF NOT EXISTS servers (
 CREATE TABLE IF NOT EXISTS queue_channels (
   guild_id VARCHAR(32) NOT NULL PRIMARY KEY,
   queue_channel_id VARCHAR(32) NOT NULL,
+  selected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  selected_by VARCHAR(32) NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -45,6 +47,8 @@ CREATE TABLE IF NOT EXISTS channels (
 CREATE TABLE IF NOT EXISTS notification_channels (
   guild_id VARCHAR(32) NOT NULL PRIMARY KEY,
   notification_channel_id VARCHAR(32) NOT NULL,
+  selected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  selected_by VARCHAR(32) NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -52,6 +56,8 @@ CREATE TABLE IF NOT EXISTS notification_channels (
 CREATE TABLE IF NOT EXISTS welcome_channels (
   guild_id VARCHAR(32) NOT NULL PRIMARY KEY,
   welcome_channel_id VARCHAR(32) NOT NULL,
+  selected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  selected_by VARCHAR(32) NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -59,20 +65,24 @@ CREATE TABLE IF NOT EXISTS welcome_channels (
 CREATE TABLE IF NOT EXISTS update_notification_channels (
   guild_id VARCHAR(32) NOT NULL PRIMARY KEY,
   update_notification_channel_id VARCHAR(32) NOT NULL,
-  selected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  selected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  selected_by VARCHAR(32) NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Update notification role mapping (guild -> role id)
 CREATE TABLE IF NOT EXISTS update_notification_roles (
   guild_id VARCHAR(32) NOT NULL PRIMARY KEY,
   notification_role_id VARCHAR(32) NOT NULL,
-  selected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  selected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  selected_by VARCHAR(32) NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Ban notification channel mapping (guild -> channel id)
 CREATE TABLE IF NOT EXISTS ban_notification_channels (
   guild_id VARCHAR(32) NOT NULL PRIMARY KEY,
   ban_notification_channel_id VARCHAR(32) NOT NULL,
+  selected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  selected_by VARCHAR(32) NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -80,6 +90,8 @@ CREATE TABLE IF NOT EXISTS ban_notification_channels (
 CREATE TABLE IF NOT EXISTS kick_notification_channels (
   guild_id VARCHAR(32) NOT NULL PRIMARY KEY,
   kick_notification_channel_id VARCHAR(32) NOT NULL,
+  selected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  selected_by VARCHAR(32) NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

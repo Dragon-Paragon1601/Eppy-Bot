@@ -96,6 +96,7 @@ Discord bot with music playback, moderation tools, queue automation, and resilie
 
 - Used for guild/user/channel sync and notification channel mappings.
 - When unavailable: bot stays online and MySQL operations become safe no-op / empty results.
+- Settings mappings store audit metadata: `selected_at` and `selected_by`.
 
 ### Time-based persistence (restart-safe)
 
@@ -146,6 +147,7 @@ Discord bot with music playback, moderation tools, queue automation, and resilie
 - `/kick target:<user> [reason]` — sends moderation log to `kick_notification_channel`; if not configured, uses the command channel.
 - `/clear [amount]`
 - `/settings [queue_channel] [notification_channel] [welcome_channel] [update_notification_channel] [ban_notification_channel] [kick_notification_channel] [notification_role] [clear_queue_channel] [clear_notification_channel] [clear_welcome_channel] [clear_ban_notification_channel] [clear_kick_notification_channel]`
+  - Running `/settings` without options shows current mappings with channel/role status, plus who and when each value was set.
 
 </details>
 
