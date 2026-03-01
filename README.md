@@ -10,13 +10,9 @@ Support / Tips:
 
 - token: Discord bot token. Required for bot login.
 - client_ID: Discord application client ID (used for RPC and command registration).
-- client_Secret: Discord application secret (if needed for OAuth flows).
-- databaseToken: (optional) token used for external services or DB auth.
-- spotify_client_ID: (optional) Spotify client ID if you integrate Spotify features.
-- spotify_secret: (optional) Spotify client secret.
-- allowlist: comma-separated list of user IDs allowed for admin actions (optional).
-- SESSION_SECRET: secret string used for session management (if applicable).
-- DB_HOST: MySQL host for certain features (if used).
+- databaseToken: MongoDB connection string (optional, bot can run without Mongo).
+- allowlist: comma-separated list of user IDs allowed for privileged/admin actions (optional).
+- DB_HOST: MySQL host (optional, bot can run without MySQL).
 - DB_USER: MySQL username.
 - DB_PASSWORD: MySQL password (mapped in code to `config.DB_PASS`).
 - DB_NAME: MySQL database name.
@@ -34,15 +30,18 @@ Files and folders overview:
     - tools/ - Utility commands (ping, refresh, help).
   - events/ - Event handlers for the Discord client (ready, interactionCreate, guild events).
   - functions/ - Internal helper logic and handlers.
-    - handlers/handleMusic.js - Music queue and playback logic (main queue is persisted to MongoDB; priority queue is in-memory; now-playing channel mapping is read from MySQL).
+    - handlers/handleMusic.js - Music queue and playback logic (uses storage adapter with MongoDB or in-memory fallback; priority queue is always in-memory).
     - handlers/handleUsers.js - Guild user sync helpers (persisted to MySQL).
     - tools/ - Misc helpers (presence, RPC helpers).
-  - schemas/ - Mongoose schemas used for Mongo-persisted features (queue, pet, roulette, guild).
+  - schemas/ - Mongoose schemas used for Mongo-persisted features (queue, pet, roulette, musicPlayStat).
+  - database/ - Runtime storage/state layer (`state.js`, `runtimeStore.js`) that enables DB fallback.
 
 Database and persistence:
 
-- MongoDB: used to persist the main music queue (`src/schemas/queue.js`) and other Mongo-backed game/profile state. Ensure a running MongoDB instance and configure MONGO URI/connection used by the project (`src/events/mongo/*`).
+- MongoDB: when available, persists queue/game/music-stat data (queue, pet, roulette, musicPlayStat).
+- MongoDB fallback: when MongoDB is missing or connection fails, bot automatically switches these features to in-memory storage (process runtime only).
 - MySQL: used for server/channel/user synchronization and channel/role mappings used by moderation/global features.
+- MySQL fallback: when MySQL is missing or unavailable, bot keeps running in `no-db` mode for MySQL-backed features (queries return empty results / no-op behavior instead of crashing).
   - Core synced tables: `servers`, `users`, `channels`.
   - Channel mapping tables: `queue_channels`, `notification_channels`, `welcome_channels`, `update_notification_channels`, `update_notification_roles`.
   - SQL schema is provided in `needed things for your bot configuration/schema.sql`.
@@ -116,7 +115,7 @@ Music commands:
   - Purpose: administracyjny reset smart shuffle dla aktualnej gildii.
   - Access: Administrator lub użytkownik z allowUsers.
   - Actions:
-    - clear — usuwa z MongoDB historię/statystyki smart shuffle dla tej gildii i resetuje runtime state (`auto/random/loop source`) powiązany ze smart shuffle.
+    - clear — usuwa historię/statystyki smart shuffle dla tej gildii (MongoDB lub fallback in-memory) i resetuje runtime state (`auto/random/loop source`) powiązany ze smart shuffle.
 
 - /push
   - Purpose: force-play local push.mp3 on loop.

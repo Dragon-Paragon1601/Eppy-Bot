@@ -1,7 +1,7 @@
 const { SlashCommandBuilder, PermissionFlagsBits } = require("discord.js");
 const config = require("../../config");
 const logger = require("../../logger");
-const MusicPlayStat = require("../../schemas/musicPlayStat");
+const runtimeStore = require("../../database/runtimeStore");
 const {
   setAutoMode,
   setRandomMode,
@@ -45,7 +45,7 @@ module.exports = {
 
     if (action === "clear") {
       try {
-        const result = await MusicPlayStat.deleteMany({ guildId });
+        const result = await runtimeStore.clearMusicStats(guildId);
 
         setAutoMode(guildId, false);
         setRandomMode(guildId, false);

@@ -6,7 +6,7 @@ const {
   ButtonStyle,
 } = require("discord.js");
 const path = require("path");
-const MusicPlayStat = require("../../schemas/musicPlayStat");
+const runtimeStore = require("../../database/runtimeStore");
 const {
   getQueue,
   playNext,
@@ -203,10 +203,7 @@ module.exports = {
 
     if (action === "statistic") {
       try {
-        const topStats = await MusicPlayStat.find({ guildId })
-          .sort({ playCount: -1, lastPlayedAt: -1 })
-          .limit(10)
-          .lean();
+        const topStats = await runtimeStore.getTopMusicStats(guildId, 10);
 
         if (!topStats || topStats.length === 0) {
           return interaction.reply({

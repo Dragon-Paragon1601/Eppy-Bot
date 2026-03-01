@@ -7,6 +7,12 @@ const config = require("./config");
 const pidusage = require("pidusage");
 const pool = require("./events/mysql/connect");
 const { connect } = require("mongoose");
+const {
+  setMongoConfigured,
+  setMongoReady,
+  setMySqlConfigured,
+  setMySqlReady,
+} = require("./database/state");
 const { Client, Collection, GatewayIntentBits } = require("discord.js");
 const client = new Client({
   intents: [
@@ -79,10 +85,35 @@ client.login(config.token);
 setInterval(monitorUsage, 18000);
 
 (async () => {
-  await connect(config.databaseToken, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  }).catch(console.error);
+  const mongoConfigured = !!(config.databaseToken || "").trim();
+  setMongoConfigured(mongoConfigured);
+
+  if (!mongoConfigured) {
+    logger.warn("MongoDB token not configured. Running in in-memory mode.");
+    setMongoReady(false);
+  } else {
+    await connect(config.databaseToken, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+    })
+      .then(() => setMongoReady(true))
+      .catch((err) => {
+        logger.error(
+          `Mongo connection failed. Switching to in-memory mode: ${err}`,
+        );
+        setMongoReady(false);
+      });
+  }
+
+  const mysqlConfigured = !!(
+    (config.DB_HOST || "").trim() &&
+    (config.DB_USER || "").trim() &&
+    (config.DB_NAME || "").trim()
+  );
+  setMySqlConfigured(mysqlConfigured);
+  setMySqlReady(
+    typeof pool.isAvailable === "function" ? pool.isAvailable() : false,
+  );
 })();
 
 module.exports = { client };

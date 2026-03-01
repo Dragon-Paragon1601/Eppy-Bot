@@ -1,20 +1,20 @@
 const fs = require("fs");
 const path = require("path");
-const Roulette = require("../../schemas/roulette");
+const runtimeStore = require("../../database/runtimeStore");
 const logger = require("../../logger");
 
 // Add or remove a user's lives
 async function updateLives(guildId, userId, amount) {
-  let user = await Roulette.findOne({ guildId, userId });
+  let user = await runtimeStore.getRouletteUser(guildId, userId);
   if (user) {
     user.lives += amount;
     if (amount === -1) {
       user.remainingBullets = 6;
       user.roundsPlayed = 0;
     }
-    await user.save().catch((err) => logger.error(`Error saving user: ${err}`));
+    await runtimeStore.saveRouletteUser(user);
   } else {
-    user = new Roulette({
+    user = {
       guildId,
       userId,
       lives: 3,
@@ -22,19 +22,19 @@ async function updateLives(guildId, userId, amount) {
       lastPlayed: null,
       remainingBullets: 6,
       roundsPlayed: 0,
-    });
-    await user.save().catch((err) => logger.error(`Error saving user: ${err}`));
+    };
+    await runtimeStore.saveRouletteUser(user);
   }
 }
 
 // Add currency to a user
 async function addCurrency(guildId, userId, amount) {
-  let user = await Roulette.findOne({ guildId, userId });
+  let user = await runtimeStore.getRouletteUser(guildId, userId);
   if (user) {
     user.currency += amount;
-    await user.save().catch((err) => logger.error(`Error saving user: ${err}`));
+    await runtimeStore.saveRouletteUser(user);
   } else {
-    user = new Roulette({
+    user = {
       guildId,
       userId,
       currency: amount,
@@ -42,18 +42,18 @@ async function addCurrency(guildId, userId, amount) {
       lastPlayed: null,
       remainingBullets: 6,
       roundsPlayed: 0,
-    });
-    await user.save().catch((err) => logger.error(`Błąd zapisu user: ${err}`));
+    };
+    await runtimeStore.saveRouletteUser(user);
   }
 }
 
 // Check if the user has lives
 async function hasLives(guildId, userId) {
-  const user = await Roulette.findOne({ guildId, userId });
+  const user = await runtimeStore.getRouletteUser(guildId, userId);
   if (user) {
     return user.lives > 0;
   } else {
-    const newUser = new Roulette({
+    const newUser = {
       guildId,
       userId,
       lives: 3,
@@ -61,17 +61,15 @@ async function hasLives(guildId, userId) {
       lastPlayed: null,
       remainingBullets: 6,
       roundsPlayed: 0,
-    });
-    await newUser
-      .save()
-      .catch((err) => logger.error(`Error saving user: ${err}`));
+    };
+    await runtimeStore.saveRouletteUser(newUser);
     return true;
   }
 }
 
 // Get the number of lives and currency for a user
 async function getUserData(guildId, userId) {
-  const user = await Roulette.findOne({ guildId, userId });
+  const user = await runtimeStore.getRouletteUser(guildId, userId);
   if (user) {
     return {
       lives: user.lives,
@@ -81,7 +79,7 @@ async function getUserData(guildId, userId) {
       remainingBullets: user.remainingBullets,
     };
   } else {
-    const newUser = new Roulette({
+    const newUser = {
       guildId,
       userId,
       lives: 3,
@@ -89,10 +87,8 @@ async function getUserData(guildId, userId) {
       lastPlayed: null,
       roundsPlayed: 0,
       remainingBullets: 6,
-    });
-    await newUser
-      .save()
-      .catch((err) => logger.error(`Error saving user: ${err}`));
+    };
+    await runtimeStore.saveRouletteUser(newUser);
     return {
       lives: 3,
       currency: 0,
@@ -104,19 +100,21 @@ async function getUserData(guildId, userId) {
 }
 
 async function handleUserAction(guildId, userId) {
-  let user = await Roulette.findOne({ guildId, userId });
+  let user = await runtimeStore.getRouletteUser(guildId, userId);
   if (!user) {
-    user = new Roulette({
+    user = {
       guildId,
       userId,
       lives: 3,
       currency: 0,
       lastPlayed: new Date(),
-    });
+      roundsPlayed: 0,
+      remainingBullets: 6,
+    };
   } else {
     user.lastPlayed = new Date();
   }
-  await user.save().catch((err) => logger.error(`Błąd zapisu user: ${err}`));
+  await runtimeStore.saveRouletteUser(user);
 }
 
 // Zresetuj życie użytkowników na nowy dzień
@@ -124,14 +122,7 @@ async function resetLives() {
   logger.info(`Resetting lives for all users to 3 at midnight`);
 
   try {
-    const result = await Roulette.updateMany(
-      {},
-      {
-        lives: 3,
-        remainingBullets: 6,
-        roundsPlayed: 0,
-      },
-    );
+    const result = await runtimeStore.resetRouletteLives();
     logger.info(
       `Lives reset successfully. Matched: ${result.matchedCount}, Modified: ${result.modifiedCount}`,
     );
@@ -142,17 +133,7 @@ async function resetLives() {
 
 // Pobierz ranking użytkowników na serwerze
 async function getTopUsers(guildId) {
-  const topUsers = await Roulette.find({ guildId })
-    .sort({ currency: -1 })
-    .limit(10);
-
-  return topUsers.map((user) => ({
-    userId: user.userId,
-    lives: user.lives,
-    currency: user.currency,
-    roundsPlayed: user.roundsPlayed,
-    remainingBullets: user.remainingBullets,
-  }));
+  return runtimeStore.getTopRouletteUsers(guildId, 10);
 }
 
 async function updateGameState(
@@ -162,16 +143,14 @@ async function updateGameState(
   remainingBullets,
 ) {
   try {
-    const user = await Roulette.findOne({ guildId, userId });
+    const user = await runtimeStore.getRouletteUser(guildId, userId);
 
     if (user) {
       user.roundsPlayed = roundsPlayed;
       user.remainingBullets = remainingBullets;
-      await user
-        .save()
-        .catch((err) => logger.error(`Błąd zapisu user: ${err}`));
+      await runtimeStore.saveRouletteUser(user);
     } else {
-      const newUser = new Roulette({
+      const newUser = {
         guildId,
         userId,
         roundsPlayed,
@@ -179,10 +158,8 @@ async function updateGameState(
         lives: 3,
         currency: 0,
         lastPlayed: null,
-      });
-      await newUser
-        .save()
-        .catch((err) => logger.error(`Error saving user: ${err}`));
+      };
+      await runtimeStore.saveRouletteUser(newUser);
     }
   } catch (err) {
     logger.error(`Error in updateGameState: ${err}`);

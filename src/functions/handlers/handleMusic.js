@@ -11,8 +11,7 @@ const mm = require("music-metadata");
 const fs = require("fs");
 const config = require("../../config");
 const pool = require("../../events/mysql/connect");
-const Queue = require("../../schemas/queue");
-const MusicPlayStat = require("../../schemas/musicPlayStat");
+const runtimeStore = require("../../database/runtimeStore");
 const firstSongStartedMap = new Map();
 let connections = {};
 let idleTimers = {};
@@ -52,12 +51,7 @@ function checkFirstSongStarted(guildId) {
 
 // Get the queue for a guild
 async function getQueue(guildId) {
-  let queue = await Queue.findOne({ guildId });
-  if (!queue) {
-    queue = new Queue({ guildId, songs: [] });
-    await queue.save().catch((err) => logger.error(`Queue save error: ${err}`));
-  }
-  return queue.songs;
+  return runtimeStore.getQueue(guildId);
 }
 
 function setLoopSong(guildId, songPath) {
@@ -258,11 +252,7 @@ async function recordTrackPlayForSmartShuffle(guildId, songPath) {
   if (!trackKey) return;
 
   try {
-    await MusicPlayStat.findOneAndUpdate(
-      { guildId, trackKey },
-      { $inc: { playCount: 1 }, $set: { lastPlayedAt: new Date() } },
-      { upsert: true },
-    );
+    await runtimeStore.incrementMusicPlay(guildId, trackKey);
   } catch (err) {
     logger.error(`recordTrackPlayForSmartShuffle error for ${guildId}: ${err}`);
   }
@@ -277,10 +267,7 @@ async function smartShuffleTracks(guildId, tracks) {
   let stats = [];
   if (uniqueKeys.length > 0) {
     try {
-      stats = await MusicPlayStat.find(
-        { guildId, trackKey: { $in: uniqueKeys } },
-        { trackKey: 1, playCount: 1 },
-      ).lean();
+      stats = await runtimeStore.findMusicStatsByTrackKeys(guildId, uniqueKeys);
     } catch (err) {
       logger.error(
         `smartShuffleTracks stats fetch error for ${guildId}: ${err}`,
@@ -336,15 +323,7 @@ function getLoopSource(guildId) {
 
 // Save the queue for a guild
 async function saveQueue(guildId, queue) {
-  let queueDoc = await Queue.findOne({ guildId });
-  if (!queueDoc) {
-    queueDoc = new Queue({ guildId, songs: queue });
-  } else {
-    queueDoc.songs = queue;
-  }
-  await queueDoc
-    .save()
-    .catch((err) => logger.error(`Queue save error: ${err}`));
+  await runtimeStore.saveQueue(guildId, queue);
 }
 
 // Priority queue: songs that should be played next (not persisted)
