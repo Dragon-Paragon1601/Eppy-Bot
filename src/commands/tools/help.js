@@ -67,8 +67,8 @@ const pages = () => {
         "- Notes: Moderation log is sent to `kick_notification_channel`, or to the command channel when not configured. Example: `/kick target:@user reason:rule violation`.\n\n" +
         "**/clear [amount]**\n" +
         "- Description: Bulk-delete messages in the current channel. Requires `Manage Messages`.\n" +
-        "- Options: `amount` (integer 1–100). If omitted, deletes messages in batches until channel is cleared.\n" +
-        "- Notes: Discord prevents bulk-deleting messages older than 14 days; the command will report that in errors. Example: `/clear amount:50`.\n\n" +
+        "- Options: `amount` (integer 1–100) and `before_message_id` (optional Discord message ID; deletes only messages older than that message). If `amount` is omitted, deletes in batches within selected range.\n" +
+        "- Notes: Discord prevents bulk-deleting messages older than 14 days; the command will report that in errors. Example: `/clear amount:50 before_message_id:123456789012345678`.\n\n" +
         "**/settings**\n" +
         "- Description: Configure server channels and mappings (Admin or allowlisted users).\n" +
         "- Options: `queue_channel`, `notification_channel`, `welcome_channel`, `update_notification_channel`, `ban_notification_channel`, `kick_notification_channel` (text channels), `notification_role` (role) or boolean clears: `clear_queue_channel`, `clear_notification_channel`, `clear_welcome_channel`, `clear_ban_notification_channel`, `clear_kick_notification_channel`.\n" +
