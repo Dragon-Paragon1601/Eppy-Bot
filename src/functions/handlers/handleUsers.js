@@ -30,7 +30,7 @@ async function saveAllGuildUsers(guild) {
           adminPrem,
           member.user.username,
           guild.name,
-          guild.iconURL() || null,
+          member.user.displayAvatarURL() || null,
         ],
       );
     }
