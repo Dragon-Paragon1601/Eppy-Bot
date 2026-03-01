@@ -6,6 +6,7 @@ const {
   ButtonStyle,
   StringSelectMenuBuilder,
 } = require("discord.js");
+const { CREATOR_MARKDOWN_LINE } = require("../../Creator");
 
 const pages = () => {
   const intro = new EmbedBuilder()
@@ -13,7 +14,7 @@ const pages = () => {
     .setColor(0x00cc99)
     .setDescription(
       "**About**\nEppy-Bot — a lightweight music and moderation assistant for Discord.\n\n" +
-        "**Creator**: Dragon-Paragon1601\n" +
+        `${CREATOR_MARKDOWN_LINE}\n` +
         "**Source / Issues**: https://github.com/Dragon-Paragon1601/Eppy-Bot/issues\n" +
         "**Tips**: You Can buy me a coffe here 🫶 — https://ko-fi.com/DragonOrParagon1601\n" +
         "**Support & Contact**: open an issue on the repository for feature requests or bug reports.\n\n" +

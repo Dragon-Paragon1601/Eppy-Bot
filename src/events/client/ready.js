@@ -4,6 +4,7 @@ const config = require("../../config");
 const guildAvailableSync = require("./guildAvailable");
 const guildMemberSync = require("./guildMemberAdd");
 const guildChannelSync = require("./guildTextChannelAviable");
+const { CREATOR_WATERMARK } = require("../../Creator");
 
 const ONE_HOUR_MS = 60 * 60 * 1000;
 let isGuildSyncRunning = false;
@@ -47,5 +48,6 @@ module.exports = {
     logger.info(
       `✅ Ready! ${client.user.tag} jest online na ${client.guilds.cache.size} serwerach!`,
     );
+    logger.info(`ℹ️ ${CREATOR_WATERMARK}`);
   },
 };

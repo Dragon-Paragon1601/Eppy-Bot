@@ -2,6 +2,7 @@ const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const pool = require("../../events/mysql/connect");
 const config = require("../../config");
 const logger = require("../../logger");
+const { withCreatorSuffix } = require("../../Creator");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -147,7 +148,7 @@ module.exports = {
           inline: false,
         })
         .setFooter({
-          text: `Notification by ${interaction.user.tag}`,
+          text: withCreatorSuffix(`Notification by ${interaction.user.tag}`),
           iconURL: interaction.user.displayAvatarURL(),
         })
         .setTimestamp();

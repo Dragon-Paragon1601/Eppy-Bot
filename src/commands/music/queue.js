@@ -24,6 +24,7 @@ const {
   smartShuffleTracks,
   getMusicBaseDir,
 } = require("../../functions/handlers/handleMusic");
+const { withCreatorSuffix } = require("../../Creator");
 const logger = require("../../logger");
 let players = require("../../functions/handlers/handleMusic").players;
 let connections = require("../../functions/handlers/handleMusic").connections;
@@ -258,7 +259,9 @@ module.exports = {
           .setColor(0x5865f2)
           .setDescription(lines.join("\n\n"))
           .setFooter({
-            text: "Statystyki per guild • Smart shuffle: WIP",
+            text: withCreatorSuffix(
+              "Statystyki per guild • Smart shuffle: WIP",
+            ),
           })
           .setTimestamp(new Date());
 

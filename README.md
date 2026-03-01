@@ -188,6 +188,30 @@ Discord bot with music playback, moderation tools, queue automation, and resilie
 
 ---
 
+## 📝 Note from the author
+
+Jestem początkującym twórcą i cały czas uczę się na tym projekcie, żeby bot był jak najlepszy.
+Czasem wychodzi lepiej, czasem gorzej — najważniejsze, że projekt stale idzie do przodu.
+
+Kod bywa miejscami trochę „spaghetti”, ale da się w nim odnaleźć i sukcesywnie go poprawiam.
+Jestem otwarty na konstruktywną krytykę, sugestie i każde konkretne uwagi.
+
+Z góry dziękuję wszystkim, którzy korzystają z bota.
+Jeśli zostawisz watermark/informację, że bot został stworzony przeze mnie, będzie mi bardzo miło 💙
+
+### English version
+
+I am a beginner developer and I’m constantly learning while working on this project, trying to make the bot as good as possible.
+Sometimes things turn out better, sometimes worse — the important part is that the project keeps moving forward.
+
+Some parts of the code are a bit “spaghetti”, but it is still possible to navigate, and I keep improving it over time.
+I’m open to constructive criticism, suggestions, and any specific feedback.
+
+Thank you in advance to everyone who uses the bot.
+If you leave a watermark/credit that the bot was created by me, I would really appreciate it 💙
+
+---
+
 ## 💙 Support
 
 - You can support the project here: https://ko-fi.com/DragonOrParagon1601
