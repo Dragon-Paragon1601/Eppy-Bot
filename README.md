@@ -169,7 +169,7 @@ Discord bot with music playback, moderation tools, queue automation, and resilie
 
 ### Local run
 
-- `node src/bot.js`
+- `node src/bot.js` or `node .`
 
 ### PM2 (recommended)
 
