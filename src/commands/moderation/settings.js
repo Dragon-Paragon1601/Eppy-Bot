@@ -91,18 +91,20 @@ module.exports = {
     const memberId = interaction.user.id;
 
     const ensureColumn = async (table, definition) => {
-      try {
-        await pool.query(`ALTER TABLE ${table} ADD COLUMN ${definition}`);
-      } catch (err) {
-        const message = String(err?.message || "").toLowerCase();
-        if (
-          message.includes("duplicate column") ||
-          message.includes("already exists")
-        ) {
-          return;
-        }
-        throw err;
+      const columnNameMatch = String(definition)
+        .trim()
+        .match(/^`?([a-zA-Z0-9_]+)`?/);
+      const columnName = columnNameMatch ? columnNameMatch[1] : null;
+      if (!columnName) {
+        throw new Error(`Invalid column definition: ${definition}`);
       }
+
+      const existingColumns = await getTableColumns(table);
+      if (existingColumns.has(columnName)) {
+        return;
+      }
+
+      await pool.query(`ALTER TABLE ${table} ADD COLUMN ${definition}`);
     };
 
     const formatChannelDisplay = async (channelId) => {
