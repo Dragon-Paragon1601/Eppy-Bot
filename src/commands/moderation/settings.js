@@ -143,6 +143,51 @@ module.exports = {
       return `<@${userId}> (${userId})`;
     };
 
+    const getTableColumns = async (tableName) => {
+      try {
+        const [rows] = await pool.query(
+          "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?",
+          [config.DB_NAME, tableName],
+        );
+        return new Set(rows.map((row) => String(row.COLUMN_NAME || "")));
+      } catch (err) {
+        logger.error(`settings getTableColumns error (${tableName}): ${err}`);
+        return new Set();
+      }
+    };
+
+    const getMappingRow = async (tableName, idColumn) => {
+      const cols = await getTableColumns(tableName);
+      const hasSelectedAt = cols.has("selected_at");
+      const hasSelectedBy = cols.has("selected_by");
+
+      const selectSelectedAt = hasSelectedAt
+        ? "selected_at"
+        : "NULL AS selected_at";
+      const selectSelectedBy = hasSelectedBy
+        ? "selected_by"
+        : "NULL AS selected_by";
+
+      const [rows] = await pool.query(
+        `SELECT ${idColumn}, ${selectSelectedAt}, ${selectSelectedBy} FROM ${tableName} WHERE guild_id = ?`,
+        [guildId],
+      );
+
+      if (!rows.length) {
+        return {
+          id: null,
+          selectedAt: null,
+          selectedBy: null,
+        };
+      }
+
+      return {
+        id: rows[0][idColumn] || null,
+        selectedAt: rows[0].selected_at || null,
+        selectedBy: rows[0].selected_by || null,
+      };
+    };
+
     // allow if admin or in allowUsers env
     const isAdmin = interaction.member.permissions.has(
       PermissionFlagsBits.Administrator,
@@ -259,58 +304,56 @@ module.exports = {
         !clearBanNotification &&
         !clearKickNotification
       ) {
-        const [qRows] = await pool.query(
-          "SELECT queue_channel_id, selected_at, selected_by FROM queue_channels WHERE guild_id = ?",
-          [guildId],
+        const queueMap = await getMappingRow(
+          "queue_channels",
+          "queue_channel_id",
         );
-        const [nRows] = await pool.query(
-          "SELECT notification_channel_id, selected_at, selected_by FROM notification_channels WHERE guild_id = ?",
-          [guildId],
+        const notificationMap = await getMappingRow(
+          "notification_channels",
+          "notification_channel_id",
         );
-        const [wRows] = await pool.query(
-          "SELECT welcome_channel_id, selected_at, selected_by FROM welcome_channels WHERE guild_id = ?",
-          [guildId],
+        const welcomeMap = await getMappingRow(
+          "welcome_channels",
+          "welcome_channel_id",
         );
-        const [uRows] = await pool.query(
-          "SELECT update_notification_channel_id, selected_at, selected_by FROM update_notification_channels WHERE guild_id = ?",
-          [guildId],
+        const updateMap = await getMappingRow(
+          "update_notification_channels",
+          "update_notification_channel_id",
         );
-        const [rRows] = await pool.query(
-          "SELECT notification_role_id, selected_at, selected_by FROM update_notification_roles WHERE guild_id = ?",
-          [guildId],
+        const roleMap = await getMappingRow(
+          "update_notification_roles",
+          "notification_role_id",
         );
-        const [bRows] = await pool.query(
-          "SELECT ban_notification_channel_id, selected_at, selected_by FROM ban_notification_channels WHERE guild_id = ?",
-          [guildId],
+        const banMap = await getMappingRow(
+          "ban_notification_channels",
+          "ban_notification_channel_id",
         );
-        const [kRows] = await pool.query(
-          "SELECT kick_notification_channel_id, selected_at, selected_by FROM kick_notification_channels WHERE guild_id = ?",
-          [guildId],
+        const kickMap = await getMappingRow(
+          "kick_notification_channels",
+          "kick_notification_channel_id",
         );
 
-        const qId = qRows.length ? qRows[0].queue_channel_id : null;
-        const qSelectedAt = qRows.length ? qRows[0].selected_at : null;
-        const qSelectedBy = qRows.length ? qRows[0].selected_by : null;
-        const nId = nRows.length ? nRows[0].notification_channel_id : null;
-        const nSelectedAt = nRows.length ? nRows[0].selected_at : null;
-        const nSelectedBy = nRows.length ? nRows[0].selected_by : null;
-        const wId = wRows.length ? wRows[0].welcome_channel_id : null;
-        const wSelectedAt = wRows.length ? wRows[0].selected_at : null;
-        const wSelectedBy = wRows.length ? wRows[0].selected_by : null;
-        const uId = uRows.length
-          ? uRows[0].update_notification_channel_id
-          : null;
-        const uSelectedAt = uRows.length ? uRows[0].selected_at : null;
-        const uSelectedBy = uRows.length ? uRows[0].selected_by : null;
-        const rId = rRows.length ? rRows[0].notification_role_id : null;
-        const rSelectedAt = rRows.length ? rRows[0].selected_at : null;
-        const rSelectedBy = rRows.length ? rRows[0].selected_by : null;
-        const bId = bRows.length ? bRows[0].ban_notification_channel_id : null;
-        const bSelectedAt = bRows.length ? bRows[0].selected_at : null;
-        const bSelectedBy = bRows.length ? bRows[0].selected_by : null;
-        const kId = kRows.length ? kRows[0].kick_notification_channel_id : null;
-        const kSelectedAt = kRows.length ? kRows[0].selected_at : null;
-        const kSelectedBy = kRows.length ? kRows[0].selected_by : null;
+        const qId = queueMap.id;
+        const qSelectedAt = queueMap.selectedAt;
+        const qSelectedBy = queueMap.selectedBy;
+        const nId = notificationMap.id;
+        const nSelectedAt = notificationMap.selectedAt;
+        const nSelectedBy = notificationMap.selectedBy;
+        const wId = welcomeMap.id;
+        const wSelectedAt = welcomeMap.selectedAt;
+        const wSelectedBy = welcomeMap.selectedBy;
+        const uId = updateMap.id;
+        const uSelectedAt = updateMap.selectedAt;
+        const uSelectedBy = updateMap.selectedBy;
+        const rId = roleMap.id;
+        const rSelectedAt = roleMap.selectedAt;
+        const rSelectedBy = roleMap.selectedBy;
+        const bId = banMap.id;
+        const bSelectedAt = banMap.selectedAt;
+        const bSelectedBy = banMap.selectedBy;
+        const kId = kickMap.id;
+        const kSelectedAt = kickMap.selectedAt;
+        const kSelectedBy = kickMap.selectedBy;
 
         const queueDisplay = await formatChannelDisplay(qId);
         const notificationDisplay = await formatChannelDisplay(nId);
