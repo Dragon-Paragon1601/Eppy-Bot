@@ -5,6 +5,7 @@ const guildAvailableSync = require("./guildAvailable");
 const guildMemberSync = require("./guildMemberAdd");
 const guildChannelSync = require("./guildTextChannelAviable");
 const { CREATOR_WATERMARK } = require("../../Creator");
+const { restoreTempBans } = require("../../database/tempBanStore");
 
 const ONE_HOUR_MS = 60 * 60 * 1000;
 let isGuildSyncRunning = false;
@@ -37,6 +38,8 @@ module.exports = {
   name: "ready",
   once: true,
   async execute(client) {
+    await restoreTempBans(client);
+
     if (typeof client.pickPresence === "function") {
       client.pickPresence();
       setInterval(() => client.pickPresence(), 30 * 1000);

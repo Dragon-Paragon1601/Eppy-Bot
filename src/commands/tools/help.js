@@ -57,24 +57,22 @@ const pages = () => {
     .setTitle("Moderation Commands — details")
     .setColor(0xff6b6b)
     .setDescription(
-      "**/ban <target> [time] [reason]**\n" +
+      "**/ban <target> [time] [delete_days] [reason]**\n" +
         "- Description: Ban a member from the server. Requires `Ban Members` permission.\n" +
-        "- Options: `target` (user, required), `time` (integer days 1–7 to delete messages), `reason` (optional).\n" +
-        "- Notes: The bot will attempt to DM the user before banning. If you lack permission or the bot lacks ban power, the action will fail. Example: `/ban target:@user time:2 reason:spamming`.\n\n" +
+        "- Options: `target` (user, required), `time` (optional temporary ban duration, e.g. `30m`, `2h`, `7d`), `delete_days` (optional integer `0-7`), `reason` (optional).\n" +
+        "- Notes: The bot attempts to DM the user before banning and reports if DM failed. If `time` is provided, the ban is temporary and is removed automatically when it expires. Moderation log is sent to `ban_notification_channel`, or to the command channel when not configured. Example: `/ban target:@user time:12h delete_days:2 reason:spamming`.\n\n" +
         "**/kick <target> [reason]**\n" +
         "- Description: Kick a member from the server. Requires `Kick Members` permission.\n" +
-        "- Options: `target` (user, required), `reason` (optional). Example: `/kick target:@user reason:rule violation`.\n\n" +
+        "- Options: `target` (user, required), `reason` (optional).\n" +
+        "- Notes: Moderation log is sent to `kick_notification_channel`, or to the command channel when not configured. Example: `/kick target:@user reason:rule violation`.\n\n" +
         "**/clear [amount]**\n" +
         "- Description: Bulk-delete messages in the current channel. Requires `Manage Messages`.\n" +
         "- Options: `amount` (integer 1–100). If omitted, deletes messages in batches until channel is cleared.\n" +
         "- Notes: Discord prevents bulk-deleting messages older than 14 days; the command will report that in errors. Example: `/clear amount:50`.\n\n" +
-        "**/restart**\n" +
-        "- Description: Restart the bot process. Restricted to repository `allowUsers` (configured via env).\n" +
-        "- Notes: Executes `pm2 restart Eppy` in the configured environment. Use only when necessary. Example: `/restart` (admin/allowlist only).\n\n" +
         "**/settings**\n" +
         "- Description: Configure server channels and mappings (Admin or allowlisted users).\n" +
-        "- Options: `queue_channel`, `notification_channel`, `welcome_channel`, `update_notification_channel` (text channels), `notification_role` (role) or boolean clears: `clear_queue_channel`, `clear_notification_channel`, `clear_welcome_channel`.\n" +
-        "- Notes: If called without options, the command replies with current mappings for the server, including update settings and selection timestamps. Example: `/settings queue_channel:#music update_notification_channel:#updates notification_role:@Updates`.",
+        "- Options: `queue_channel`, `notification_channel`, `welcome_channel`, `update_notification_channel`, `ban_notification_channel`, `kick_notification_channel` (text channels), `notification_role` (role) or boolean clears: `clear_queue_channel`, `clear_notification_channel`, `clear_welcome_channel`, `clear_ban_notification_channel`, `clear_kick_notification_channel`.\n" +
+        "- Notes: If called without options, the command replies with current mappings for the server, including update settings and ban/kick notification channels. Example: `/settings queue_channel:#music update_notification_channel:#updates notification_role:@Updates`.",
     );
 
   const tools = new EmbedBuilder()

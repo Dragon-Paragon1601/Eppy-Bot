@@ -97,6 +97,14 @@ Discord bot with music playback, moderation tools, queue automation, and resilie
 - Used for guild/user/channel sync and notification channel mappings.
 - When unavailable: bot stays online and MySQL operations become safe no-op / empty results.
 
+### Time-based persistence (restart-safe)
+
+- `/ban ... time:<duration>` (temporary ban) is persisted in MySQL table `temp_bans`.
+- On bot startup, scheduled auto-unbans are restored from database.
+- If MySQL is unavailable, temporary bans cannot be guaranteed to survive restart.
+- `/pet` cooldown and roulette/game counters are persisted only when MongoDB is configured; in fallback in-memory mode they are not restart-safe.
+- Dev command delays (`/gitpull delay`, `/restart delay`) currently use runtime timers (`setTimeout`) and are not restored after process restart.
+
 ### SQL schema
 
 - See: `needed things for your bot configuration/schema.sql`
@@ -134,12 +142,19 @@ Discord bot with music playback, moderation tools, queue automation, and resilie
 <details>
 <summary><b>🛡 Moderation commands</b></summary>
 
-- `/ban target:<user> [time] [reason]`
-- `/kick target:<user> [reason]`
+- `/ban target:<user> [time] [delete_days] [reason]` — sends moderation log to `ban_notification_channel`; if not configured, uses the command channel.
+- `/kick target:<user> [reason]` — sends moderation log to `kick_notification_channel`; if not configured, uses the command channel.
 - `/clear [amount]`
-- `/settings [queue_channel] [notification_channel] [welcome_channel] [update_notification_channel] [notification_role] [clear_queue_channel] [clear_notification_channel] [clear_welcome_channel]`
-- `/global_update message:<text> [title] [ping_role] [dry_run]`
-- `/global_notiffication message:<text> [title] [ping] [dry_run]`
+- `/settings [queue_channel] [notification_channel] [welcome_channel] [update_notification_channel] [ban_notification_channel] [kick_notification_channel] [notification_role] [clear_queue_channel] [clear_notification_channel] [clear_welcome_channel] [clear_ban_notification_channel] [clear_kick_notification_channel]`
+
+</details>
+
+<details>
+<summary><b>🧪 Dev commands (allowUsers only)</b></summary>
+
+- `/global_update [message] [message_file] [title] [ping_role] [dry_run]`
+- `/global_notiffication [message] [message_file] [title] [ping] [dry_run]`
+- `/gitpull [notify] [ping] [delay]`
 - `/restart [notify] [ping] [delay]`
 
 </details>

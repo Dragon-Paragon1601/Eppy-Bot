@@ -69,6 +69,32 @@ CREATE TABLE IF NOT EXISTS update_notification_roles (
   selected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Ban notification channel mapping (guild -> channel id)
+CREATE TABLE IF NOT EXISTS ban_notification_channels (
+  guild_id VARCHAR(32) NOT NULL PRIMARY KEY,
+  ban_notification_channel_id VARCHAR(32) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Kick notification channel mapping (guild -> channel id)
+CREATE TABLE IF NOT EXISTS kick_notification_channels (
+  guild_id VARCHAR(32) NOT NULL PRIMARY KEY,
+  kick_notification_channel_id VARCHAR(32) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Temporary bans persistence (required for restart-safe auto-unban)
+CREATE TABLE IF NOT EXISTS temp_bans (
+  guild_id VARCHAR(32) NOT NULL,
+  user_id VARCHAR(32) NOT NULL,
+  moderator_id VARCHAR(32) NULL,
+  reason VARCHAR(512) NULL,
+  expires_at BIGINT NOT NULL,
+  created_at BIGINT NOT NULL,
+  PRIMARY KEY (guild_id, user_id),
+  KEY idx_temp_bans_expires_at (expires_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Server information table
 CREATE TABLE IF NOT EXISTS servers (
   id VARCHAR(32) NOT NULL PRIMARY KEY,
