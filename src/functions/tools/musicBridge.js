@@ -9,6 +9,8 @@ const music = require("../handlers/handleMusic");
 const COMMAND_LIMIT = 20;
 const LOOP_INTERVAL_MS = 2000;
 const LIBRARY_SYNC_INTERVAL_MS = 60000;
+const COMMAND_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+const COMMAND_RETENTION_MINUTES = 10;
 const metadataCache = new Map();
 
 const ACTIONS = new Set([
@@ -514,6 +516,24 @@ async function processPendingCommands(client) {
   }
 }
 
+async function cleanupProcessedCommands() {
+  await pool.query(
+    `DELETE FROM music_command_queue
+     WHERE status IN ('done', 'failed')
+       AND processed_at IS NOT NULL
+       AND processed_at < DATE_SUB(NOW(), INTERVAL ? MINUTE)`,
+    [COMMAND_RETENTION_MINUTES],
+  );
+
+  await pool.query(
+    `DELETE FROM music_command_queue
+     WHERE status IN ('done', 'failed')
+       AND processed_at IS NULL
+       AND created_at < DATE_SUB(NOW(), INTERVAL ? MINUTE)`,
+    [COMMAND_RETENTION_MINUTES],
+  );
+}
+
 async function refreshAllGuildStates(client) {
   const guildIds = Array.from(client.guilds.cache.keys());
   for (const guildId of guildIds) {
@@ -533,6 +553,7 @@ function startMusicBridge(client) {
 
   let isRunning = false;
   let lastLibrarySyncAt = 0;
+  let lastCommandCleanupAt = 0;
 
   const tick = async () => {
     if (isRunning) return;
@@ -546,6 +567,10 @@ function startMusicBridge(client) {
         lastLibrarySyncAt = now;
       }
       await processPendingCommands(client);
+      if (now - lastCommandCleanupAt >= COMMAND_CLEANUP_INTERVAL_MS) {
+        await cleanupProcessedCommands();
+        lastCommandCleanupAt = now;
+      }
       await refreshAllGuildStates(client);
     } catch (err) {
       logger.error(`Music bridge tick failed: ${err}`);
