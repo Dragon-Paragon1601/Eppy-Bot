@@ -651,22 +651,31 @@ async function runPhase(name, handler) {
 }
 
 function startMusicBridge(client) {
-  if (!pool?.isAvailable || !pool.isAvailable()) {
-    logger.warn("Music bridge disabled: MySQL not available.");
-    return;
-  }
-
   let isRunning = false;
   let tablesReady = false;
   let lastLibrarySyncAt = 0;
   let lastCommandCleanupAt = 0;
   let didStartupRecovery = false;
+  let waitingForDbLogged = false;
 
   const tick = async () => {
     if (isRunning) return;
     isRunning = true;
 
     try {
+      if (!pool?.isAvailable || !pool.isAvailable()) {
+        if (!waitingForDbLogged) {
+          waitingForDbLogged = true;
+          logger.warn("Music bridge waiting for MySQL availability...");
+        }
+        return;
+      }
+
+      if (waitingForDbLogged) {
+        waitingForDbLogged = false;
+        logger.info("Music bridge resumed after MySQL reconnect.");
+      }
+
       if (!tablesReady) {
         const ok = await runPhase("ensureTables", async () => {
           await ensureTables();

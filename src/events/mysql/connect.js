@@ -15,6 +15,27 @@ setMySqlConfigured(mysqlConfigured);
 let pool = null;
 let mysqlReady = false;
 
+async function restoreConnection() {
+  if (!pool) {
+    mysqlReady = false;
+    setMySqlReady(false);
+    return false;
+  }
+
+  try {
+    const connection = await pool.getConnection();
+    connection.release();
+    mysqlReady = true;
+    setMySqlReady(true);
+    return true;
+  } catch (error) {
+    mysqlReady = false;
+    setMySqlReady(false);
+    logger.warn(`MySQL reconnect attempt failed: ${error}`);
+    return false;
+  }
+}
+
 if (mysqlConfigured) {
   pool = mysql.createPool({
     host: config.DB_HOST,
@@ -52,15 +73,35 @@ if (mysqlConfigured) {
 })();
 
 async function query(sql, params = []) {
-  if (!pool || !mysqlReady) return [[], []];
+  if (!pool) return [[], []];
+
+  if (!mysqlReady) {
+    const restored = await restoreConnection();
+    if (!restored) {
+      return [[], []];
+    }
+  }
 
   try {
     return await pool.query(sql, params);
   } catch (error) {
     mysqlReady = false;
     setMySqlReady(false);
-    logger.error(`MySQL query error. Switching to no-db mode: ${error}`);
-    return [[], []];
+    logger.error(`MySQL query error. Attempting reconnect: ${error}`);
+
+    const restored = await restoreConnection();
+    if (!restored) {
+      return [[], []];
+    }
+
+    try {
+      return await pool.query(sql, params);
+    } catch (retryError) {
+      mysqlReady = false;
+      setMySqlReady(false);
+      logger.error(`MySQL query retry failed: ${retryError}`);
+      return [[], []];
+    }
   }
 }
 
