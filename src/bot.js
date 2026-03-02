@@ -6,6 +6,7 @@ const logger = require("./logger");
 const config = require("./config");
 const pidusage = require("pidusage");
 const pool = require("./events/mysql/connect");
+const { shutdownMusicBridge } = require("./functions/tools/musicBridge");
 const { connect } = require("mongoose");
 const {
   setMongoConfigured,
@@ -83,6 +84,49 @@ client.login(config.token);
 
 //logUsage();
 setInterval(monitorUsage, 18000);
+
+let isShuttingDown = false;
+
+async function gracefulShutdown(reason = "shutdown") {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+
+  logger.warn(`Graceful shutdown started: ${reason}`);
+
+  try {
+    await shutdownMusicBridge(client);
+  } catch (error) {
+    logger.error(`shutdownMusicBridge error: ${error}`);
+  }
+
+  try {
+    if (client && typeof client.destroy === "function") {
+      client.destroy();
+    }
+  } catch (error) {
+    logger.error(`Discord client destroy error: ${error}`);
+  }
+
+  process.exit(0);
+}
+
+process.on("SIGINT", () => {
+  gracefulShutdown("SIGINT");
+});
+
+process.on("SIGTERM", () => {
+  gracefulShutdown("SIGTERM");
+});
+
+process.on("uncaughtException", (error) => {
+  logger.error(`uncaughtException: ${error}`);
+  gracefulShutdown("uncaughtException");
+});
+
+process.on("unhandledRejection", (reason) => {
+  logger.error(`unhandledRejection: ${reason}`);
+  gracefulShutdown("unhandledRejection");
+});
 
 (async () => {
   const mongoConfigured = !!(config.databaseToken || "").trim();

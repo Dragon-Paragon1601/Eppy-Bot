@@ -12,6 +12,7 @@ const LIBRARY_SYNC_INTERVAL_MS = 60000;
 const COMMAND_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 const COMMAND_RETENTION_MINUTES = 10;
 const metadataCache = new Map();
+let bridgeIntervalId = null;
 
 const ACTIONS = new Set([
   "toggle_pause",
@@ -439,6 +440,16 @@ async function resetPlaybackStateAfterRestart() {
   );
 }
 
+async function resetPlaybackStateForShutdown() {
+  await pool.query(
+    "UPDATE guild_music_state SET playback_state = 'idle', channel_label = 'No channel', now_playing_title = 'Nothing playing', now_playing_artist = ''",
+  );
+
+  await pool.query(
+    "UPDATE music_command_queue SET status = 'pending' WHERE status = 'processing'",
+  );
+}
+
 async function syncVoiceStatesSnapshot(client) {
   for (const guild of client.guilds.cache.values()) {
     await pool.query("DELETE FROM guild_user_voice_states WHERE guild_id = ?", [
@@ -624,6 +635,21 @@ async function refreshAllGuildStates(client) {
   }
 }
 
+async function rebuildBridgeState(client) {
+  await syncVoiceStatesSnapshot(client);
+  await refreshAllGuildStates(client);
+}
+
+async function runPhase(name, handler) {
+  try {
+    await handler();
+    return true;
+  } catch (error) {
+    logger.error(`Music bridge phase failed (${name}): ${error}`);
+    return false;
+  }
+}
+
 function startMusicBridge(client) {
   if (!pool?.isAvailable || !pool.isAvailable()) {
     logger.warn("Music bridge disabled: MySQL not available.");
@@ -631,6 +657,7 @@ function startMusicBridge(client) {
   }
 
   let isRunning = false;
+  let tablesReady = false;
   let lastLibrarySyncAt = 0;
   let lastCommandCleanupAt = 0;
   let didStartupRecovery = false;
@@ -640,23 +667,51 @@ function startMusicBridge(client) {
     isRunning = true;
 
     try {
-      await ensureTables();
+      if (!tablesReady) {
+        const ok = await runPhase("ensureTables", async () => {
+          await ensureTables();
+        });
+        if (!ok) return;
+        tablesReady = true;
+      }
+
       if (!didStartupRecovery) {
-        await resetPlaybackStateAfterRestart();
-        await syncVoiceStatesSnapshot(client);
+        await runPhase("startupReset", async () => {
+          await resetPlaybackStateAfterRestart();
+        });
+        await runPhase("startupRebuild", async () => {
+          await rebuildBridgeState(client);
+        });
         didStartupRecovery = true;
       }
+
       const now = Date.now();
+
       if (now - lastLibrarySyncAt >= LIBRARY_SYNC_INTERVAL_MS) {
-        await syncLibraryTracksToDatabase();
-        lastLibrarySyncAt = now;
+        const ok = await runPhase("librarySync", async () => {
+          await syncLibraryTracksToDatabase();
+        });
+        if (ok) {
+          lastLibrarySyncAt = now;
+        }
       }
-      await processPendingCommands(client);
+
+      await runPhase("processCommands", async () => {
+        await processPendingCommands(client);
+      });
+
       if (now - lastCommandCleanupAt >= COMMAND_CLEANUP_INTERVAL_MS) {
-        await cleanupProcessedCommands();
-        lastCommandCleanupAt = now;
+        const ok = await runPhase("cleanupCommands", async () => {
+          await cleanupProcessedCommands();
+        });
+        if (ok) {
+          lastCommandCleanupAt = now;
+        }
       }
-      await refreshAllGuildStates(client);
+
+      await runPhase("refreshGuildStates", async () => {
+        await refreshAllGuildStates(client);
+      });
     } catch (err) {
       logger.error(`Music bridge tick failed: ${err}`);
     } finally {
@@ -665,10 +720,27 @@ function startMusicBridge(client) {
   };
 
   tick();
-  setInterval(tick, LOOP_INTERVAL_MS);
+  bridgeIntervalId = setInterval(tick, LOOP_INTERVAL_MS);
   logger.info("Music bridge started (DB commands + state sync).");
+}
+
+async function shutdownMusicBridge() {
+  if (!pool?.isAvailable || !pool.isAvailable()) {
+    return;
+  }
+
+  if (bridgeIntervalId) {
+    clearInterval(bridgeIntervalId);
+    bridgeIntervalId = null;
+  }
+
+  await runPhase("shutdownReset", async () => {
+    await ensureTables();
+    await resetPlaybackStateForShutdown();
+  });
 }
 
 module.exports = {
   startMusicBridge,
+  shutdownMusicBridge,
 };
