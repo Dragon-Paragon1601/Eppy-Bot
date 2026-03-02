@@ -71,8 +71,10 @@ const pages = () => {
         "- Notes: Discord prevents bulk-deleting messages older than 14 days; the command will report that in errors. Example: `/clear amount:50 before_message_id:123456789012345678`.\n\n" +
         "**/settings**\n" +
         "- Description: Configure server channels and mappings (Admin or allowlisted users).\n" +
-        "- Options: `queue_channel`, `notification_channel`, `welcome_channel`, `update_notification_channel`, `ban_notification_channel`, `kick_notification_channel` (text channels), `notification_role` (role) or boolean clears: `clear_queue_channel`, `clear_notification_channel`, `clear_welcome_channel`, `clear_ban_notification_channel`, `clear_kick_notification_channel`.\n" +
-        "- Notes: If called without options, the command replies with current mappings for the server, including update settings and ban/kick notification channels. Example: `/settings queue_channel:#music update_notification_channel:#updates notification_role:@Updates`.",
+        "- Channel options: `queue_channel`, `notification_channel`, `welcome_channel`, `update_notification_channel`, `ban_notification_channel`, `kick_notification_channel` (text channels), role options: `notification_role` (generic), `update_notification_role` (updates), clears: `clear_queue_channel`, `clear_notification_channel`, `clear_welcome_channel`, `clear_ban_notification_channel`, `clear_kick_notification_channel`.\n" +
+        "- Toggle options: `notifications_enabled`, `queue_notifications_enabled`, `welcome_notifications_enabled`, `global_notifications_enabled`, `update_notifications_enabled`, `ban_notifications_enabled`, `kick_notifications_enabled`.\n" +
+        "- Defaults: `queue/ban/kick` are ON and use command channel when no mapped channel exists. `welcome/notification/update` are OFF by default and require configured channel when enabled.\n" +
+        "- Notes: If called without options, the command replies with current mappings and toggle state. Example: `/settings queue_channel:#music update_notification_channel:#updates update_notifications_enabled:true notification_role:@Notice update_notification_role:@Updates`.",
     );
 
   const tools = new EmbedBuilder()

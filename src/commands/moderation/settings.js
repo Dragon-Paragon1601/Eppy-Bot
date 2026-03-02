@@ -7,6 +7,12 @@ const {
 const pool = require("../../events/mysql/connect");
 const config = require("../../config");
 const logger = require("../../logger");
+const {
+  DEFAULT_NOTIFICATION_SETTINGS,
+  ensureNotificationSettingsTable,
+  getGuildNotificationSettings,
+  upsertGuildNotificationSettings,
+} = require("../../functions/tools/notificationSettings");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -51,6 +57,12 @@ module.exports = {
     .addRoleOption((option) =>
       option
         .setName("notification_role")
+        .setDescription("Role to ping in generic notifications (set to change)")
+        .setRequired(false),
+    )
+    .addRoleOption((option) =>
+      option
+        .setName("update_notification_role")
         .setDescription("Role to ping in update notifications (set to change)")
         .setRequired(false),
     )
@@ -82,6 +94,48 @@ module.exports = {
       option
         .setName("clear_kick_notification_channel")
         .setDescription("Clear kick_notification_channel mapping")
+        .setRequired(false),
+    )
+    .addBooleanOption((option) =>
+      option
+        .setName("notifications_enabled")
+        .setDescription("Enable/disable all notifications category")
+        .setRequired(false),
+    )
+    .addBooleanOption((option) =>
+      option
+        .setName("queue_notifications_enabled")
+        .setDescription("Enable/disable queue notifications")
+        .setRequired(false),
+    )
+    .addBooleanOption((option) =>
+      option
+        .setName("welcome_notifications_enabled")
+        .setDescription("Enable/disable welcome notifications")
+        .setRequired(false),
+    )
+    .addBooleanOption((option) =>
+      option
+        .setName("global_notifications_enabled")
+        .setDescription("Enable/disable generic notification broadcasts")
+        .setRequired(false),
+    )
+    .addBooleanOption((option) =>
+      option
+        .setName("update_notifications_enabled")
+        .setDescription("Enable/disable update notifications")
+        .setRequired(false),
+    )
+    .addBooleanOption((option) =>
+      option
+        .setName("ban_notifications_enabled")
+        .setDescription("Enable/disable ban notifications")
+        .setRequired(false),
+    )
+    .addBooleanOption((option) =>
+      option
+        .setName("kick_notifications_enabled")
+        .setDescription("Enable/disable kick notifications")
         .setRequired(false),
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
@@ -221,6 +275,9 @@ module.exports = {
       "kick_notification_channel",
     );
     const notificationRole = interaction.options.getRole("notification_role");
+    const updateNotificationRole = interaction.options.getRole(
+      "update_notification_role",
+    );
     const clearQueue = interaction.options.getBoolean("clear_queue_channel");
     const clearNotification = interaction.options.getBoolean(
       "clear_notification_channel",
@@ -234,6 +291,27 @@ module.exports = {
     const clearKickNotification = interaction.options.getBoolean(
       "clear_kick_notification_channel",
     );
+    const notificationsEnabledOption = interaction.options.getBoolean(
+      "notifications_enabled",
+    );
+    const queueNotificationsEnabledOption = interaction.options.getBoolean(
+      "queue_notifications_enabled",
+    );
+    const welcomeNotificationsEnabledOption = interaction.options.getBoolean(
+      "welcome_notifications_enabled",
+    );
+    const globalNotificationsEnabledOption = interaction.options.getBoolean(
+      "global_notifications_enabled",
+    );
+    const updateNotificationsEnabledOption = interaction.options.getBoolean(
+      "update_notifications_enabled",
+    );
+    const banNotificationsEnabledOption = interaction.options.getBoolean(
+      "ban_notifications_enabled",
+    );
+    const kickNotificationsEnabledOption = interaction.options.getBoolean(
+      "kick_notifications_enabled",
+    );
 
     try {
       await pool.query(
@@ -242,6 +320,13 @@ module.exports = {
       await pool.query(
         "CREATE TABLE IF NOT EXISTS kick_notification_channels (guild_id VARCHAR(32) NOT NULL PRIMARY KEY, kick_notification_channel_id VARCHAR(32) NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
       );
+      await pool.query(
+        "CREATE TABLE IF NOT EXISTS update_notification_roles (guild_id VARCHAR(32) NOT NULL PRIMARY KEY, notification_role_id VARCHAR(32) NOT NULL, selected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, selected_by VARCHAR(32) NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+      );
+      await pool.query(
+        "CREATE TABLE IF NOT EXISTS notification_roles (guild_id VARCHAR(32) NOT NULL PRIMARY KEY, notification_role_id VARCHAR(32) NOT NULL, selected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, selected_by VARCHAR(32) NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+      );
+      await ensureNotificationSettingsTable();
 
       await ensureColumn(
         "queue_channels",
@@ -272,6 +357,7 @@ module.exports = {
         "update_notification_roles",
         "selected_by VARCHAR(32) NULL",
       );
+      await ensureColumn("notification_roles", "selected_by VARCHAR(32) NULL");
 
       await ensureColumn(
         "ban_notification_channels",
@@ -300,11 +386,19 @@ module.exports = {
         !banNotificationChannel &&
         !kickNotificationChannel &&
         !notificationRole &&
+        !updateNotificationRole &&
         !clearQueue &&
         !clearNotification &&
         !clearWelcome &&
         !clearBanNotification &&
-        !clearKickNotification
+        !clearKickNotification &&
+        notificationsEnabledOption === null &&
+        queueNotificationsEnabledOption === null &&
+        welcomeNotificationsEnabledOption === null &&
+        globalNotificationsEnabledOption === null &&
+        updateNotificationsEnabledOption === null &&
+        banNotificationsEnabledOption === null &&
+        kickNotificationsEnabledOption === null
       ) {
         const queueMap = await getMappingRow(
           "queue_channels",
@@ -323,6 +417,10 @@ module.exports = {
           "update_notification_channel_id",
         );
         const roleMap = await getMappingRow(
+          "notification_roles",
+          "notification_role_id",
+        );
+        const updateRoleMap = await getMappingRow(
           "update_notification_roles",
           "notification_role_id",
         );
@@ -350,6 +448,9 @@ module.exports = {
         const rId = roleMap.id;
         const rSelectedAt = roleMap.selectedAt;
         const rSelectedBy = roleMap.selectedBy;
+        const urId = updateRoleMap.id;
+        const urSelectedAt = updateRoleMap.selectedAt;
+        const urSelectedBy = updateRoleMap.selectedBy;
         const bId = banMap.id;
         const bSelectedAt = banMap.selectedAt;
         const bSelectedBy = banMap.selectedBy;
@@ -364,6 +465,24 @@ module.exports = {
         const banDisplay = await formatChannelDisplay(bId);
         const kickDisplay = await formatChannelDisplay(kId);
         const roleDisplay = formatRoleDisplay(rId);
+        const updateRoleDisplay = formatRoleDisplay(urId);
+        const notificationSettings = await getGuildNotificationSettings(
+          guildId,
+          {
+            ensureRow: true,
+            selectedBy: memberId,
+          },
+        );
+
+        const toggleSummary = [
+          `Category: ${notificationSettings.notifications_enabled ? "✅ ON" : "⛔ OFF"}`,
+          `Queue: ${notificationSettings.queue_notifications_enabled ? "✅ ON" : "⛔ OFF"}`,
+          `Ban: ${notificationSettings.ban_notifications_enabled ? "✅ ON" : "⛔ OFF"}`,
+          `Kick: ${notificationSettings.kick_notifications_enabled ? "✅ ON" : "⛔ OFF"}`,
+          `Welcome: ${notificationSettings.welcome_notifications_enabled ? "✅ ON" : "⛔ OFF"}`,
+          `Notification: ${notificationSettings.notification_channel_enabled ? "✅ ON" : "⛔ OFF"}`,
+          `Update: ${notificationSettings.update_notification_channel_enabled ? "✅ ON" : "⛔ OFF"}`,
+        ].join("\n");
 
         const settingsEmbed = new EmbedBuilder()
           .setColor(0x3498db)
@@ -393,8 +512,13 @@ module.exports = {
               inline: false,
             },
             {
-              name: "Update Notification Role",
+              name: "Notification Role",
               value: `${roleDisplay}\nSelected: ${formatSelectedAt(rSelectedAt)}\nBy: ${formatSelectedBy(rSelectedBy)}`,
+              inline: false,
+            },
+            {
+              name: "Update Notification Role",
+              value: `${updateRoleDisplay}\nSelected: ${formatSelectedAt(urSelectedAt)}\nBy: ${formatSelectedBy(urSelectedBy)}`,
               inline: false,
             },
             {
@@ -407,6 +531,11 @@ module.exports = {
               value: `${kickDisplay}\nSelected: ${formatSelectedAt(kSelectedAt)}\nBy: ${formatSelectedBy(kSelectedBy)}`,
               inline: false,
             },
+            {
+              name: "Notification Toggles",
+              value: `${toggleSummary}\n\nDefaults: Queue/Ban/Kick ON with fallback to command channel. Welcome/Notification/Update OFF and require channel to work.`,
+              inline: false,
+            },
           )
           .setFooter({
             text: `Guild ID: ${guildId}`,
@@ -415,6 +544,111 @@ module.exports = {
 
         return interaction.reply({
           embeds: [settingsEmbed],
+          ephemeral: true,
+        });
+      }
+
+      const currentNotificationMap = await getMappingRow(
+        "notification_channels",
+        "notification_channel_id",
+      );
+      const currentWelcomeMap = await getMappingRow(
+        "welcome_channels",
+        "welcome_channel_id",
+      );
+      const currentUpdateMap = await getMappingRow(
+        "update_notification_channels",
+        "update_notification_channel_id",
+      );
+
+      const currentNotificationSettings = await getGuildNotificationSettings(
+        guildId,
+        {
+          ensureRow: true,
+          selectedBy: memberId,
+        },
+      );
+
+      const nextNotificationSettings = {
+        ...DEFAULT_NOTIFICATION_SETTINGS,
+        ...currentNotificationSettings,
+      };
+
+      if (notificationsEnabledOption !== null) {
+        nextNotificationSettings.notifications_enabled =
+          notificationsEnabledOption;
+      }
+      if (queueNotificationsEnabledOption !== null) {
+        nextNotificationSettings.queue_notifications_enabled =
+          queueNotificationsEnabledOption;
+      }
+      if (welcomeNotificationsEnabledOption !== null) {
+        nextNotificationSettings.welcome_notifications_enabled =
+          welcomeNotificationsEnabledOption;
+      }
+      if (globalNotificationsEnabledOption !== null) {
+        nextNotificationSettings.notification_channel_enabled =
+          globalNotificationsEnabledOption;
+      }
+      if (updateNotificationsEnabledOption !== null) {
+        nextNotificationSettings.update_notification_channel_enabled =
+          updateNotificationsEnabledOption;
+      }
+      if (banNotificationsEnabledOption !== null) {
+        nextNotificationSettings.ban_notifications_enabled =
+          banNotificationsEnabledOption;
+      }
+      if (kickNotificationsEnabledOption !== null) {
+        nextNotificationSettings.kick_notifications_enabled =
+          kickNotificationsEnabledOption;
+      }
+
+      const effectiveNotificationChannelId = clearNotification
+        ? null
+        : notificationChannel
+          ? notificationChannel.id
+          : currentNotificationMap.id;
+      const effectiveWelcomeChannelId = clearWelcome
+        ? null
+        : welcomeChannel
+          ? welcomeChannel.id
+          : currentWelcomeMap.id;
+      const effectiveUpdateChannelId = updateNotificationChannel
+        ? updateNotificationChannel.id
+        : currentUpdateMap.id;
+
+      if (
+        nextNotificationSettings.notifications_enabled &&
+        nextNotificationSettings.notification_channel_enabled &&
+        !effectiveNotificationChannelId
+      ) {
+        return interaction.reply({
+          content:
+            "❌ `notification_channel` is required when generic notifications are enabled.",
+          ephemeral: true,
+        });
+      }
+
+      if (
+        nextNotificationSettings.notifications_enabled &&
+        nextNotificationSettings.welcome_notifications_enabled &&
+        !effectiveWelcomeChannelId
+      ) {
+        return interaction.reply({
+          content:
+            "❌ `welcome_channel` is required when welcome notifications are enabled.",
+          ephemeral: true,
+        });
+      }
+
+      if (
+        nextNotificationSettings.notifications_enabled &&
+        nextNotificationSettings.update_notification_channel_enabled &&
+        !effectiveUpdateChannelId
+      ) {
+        return interaction.reply({
+          content:
+            "❌ `update_notification_channel` is required when update notifications are enabled.",
           ephemeral: true,
         });
       }
@@ -500,8 +734,16 @@ module.exports = {
       // notification_role
       if (notificationRole) {
         await pool.query(
-          "INSERT INTO update_notification_roles (guild_id, notification_role_id, selected_at, selected_by) VALUES (?, ?, CURRENT_TIMESTAMP, ?) ON DUPLICATE KEY UPDATE notification_role_id = VALUES(notification_role_id), selected_at = CURRENT_TIMESTAMP, selected_by = VALUES(selected_by)",
+          "INSERT INTO notification_roles (guild_id, notification_role_id, selected_at, selected_by) VALUES (?, ?, CURRENT_TIMESTAMP, ?) ON DUPLICATE KEY UPDATE notification_role_id = VALUES(notification_role_id), selected_at = CURRENT_TIMESTAMP, selected_by = VALUES(selected_by)",
           [guildId, notificationRole.id, memberId],
+        );
+      }
+
+      // update_notification_role
+      if (updateNotificationRole) {
+        await pool.query(
+          "INSERT INTO update_notification_roles (guild_id, notification_role_id, selected_at, selected_by) VALUES (?, ?, CURRENT_TIMESTAMP, ?) ON DUPLICATE KEY UPDATE notification_role_id = VALUES(notification_role_id), selected_at = CURRENT_TIMESTAMP, selected_by = VALUES(selected_by)",
+          [guildId, updateNotificationRole.id, memberId],
         );
       }
 
@@ -550,6 +792,12 @@ module.exports = {
           [guildId, kickNotificationChannel.id, memberId],
         );
       }
+
+      await upsertGuildNotificationSettings(
+        guildId,
+        nextNotificationSettings,
+        memberId,
+      );
 
       return interaction.reply({
         content: "✅ Settings updated.",

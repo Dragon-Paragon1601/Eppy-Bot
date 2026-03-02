@@ -6,6 +6,10 @@ const {
 } = require("discord.js");
 const logger = require("./../../logger");
 const pool = require("../../events/mysql/connect");
+const {
+  getGuildNotificationSettings,
+  isNotificationTypeEnabled,
+} = require("../../functions/tools/notificationSettings");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -130,6 +134,22 @@ module.exports = {
       .setTimestamp();
 
     try {
+      const notificationSettings = await getGuildNotificationSettings(
+        interaction.guild.id,
+        {
+          ensureRow: true,
+        },
+      );
+
+      if (
+        !isNotificationTypeEnabled(
+          notificationSettings,
+          "kick_notifications_enabled",
+        )
+      ) {
+        return interaction.editReply({ embeds: [resultEmbed] });
+      }
+
       const [rows] = await pool.query(
         "SELECT kick_notification_channel_id FROM kick_notification_channels WHERE guild_id = ?",
         [interaction.guild.id],

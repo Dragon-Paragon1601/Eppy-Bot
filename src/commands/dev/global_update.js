@@ -3,6 +3,9 @@ const pool = require("../../events/mysql/connect");
 const config = require("../../config");
 const logger = require("../../logger");
 const { withCreatorSuffix } = require("../../Creator");
+const {
+  ensureNotificationSettingsTable,
+} = require("../../functions/tools/notificationSettings");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -128,14 +131,16 @@ module.exports = {
         });
       }
 
+      await ensureNotificationSettingsTable();
+
       const [rows] = await pool.query(
-        "SELECT c.guild_id, c.update_notification_channel_id, r.notification_role_id FROM update_notification_channels c LEFT JOIN update_notification_roles r ON c.guild_id = r.guild_id",
+        "SELECT c.guild_id, c.update_notification_channel_id, r.notification_role_id FROM update_notification_channels c LEFT JOIN update_notification_roles r ON c.guild_id = r.guild_id INNER JOIN guild_notification_settings s ON c.guild_id = s.guild_id WHERE s.notifications_enabled = 1 AND s.update_notification_channel_enabled = 1",
       );
 
       if (!rows.length) {
         return interaction.editReply({
           content:
-            "ℹ️ No servers have `update_notification_channel` configured.",
+            "ℹ️ No servers have enabled update notifications with configured `update_notification_channel`.",
         });
       }
 

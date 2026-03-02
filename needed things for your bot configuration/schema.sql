@@ -43,6 +43,24 @@ CREATE TABLE IF NOT EXISTS channels (
   KEY idx_channels_channel_id (channel_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Roles mapping (guild + role -> role snapshot)
+CREATE TABLE IF NOT EXISTS guild_roles (
+  guild_id VARCHAR(32) NOT NULL,
+  role_id VARCHAR(32) NOT NULL,
+  role_name VARCHAR(255) NOT NULL,
+  role_color INT UNSIGNED NOT NULL DEFAULT 0,
+  permission_level TINYINT NOT NULL DEFAULT 0,
+  permissions_bitfield VARCHAR(32) NOT NULL,
+  position INT NOT NULL DEFAULT 0,
+  is_hoist TINYINT(1) NOT NULL DEFAULT 0,
+  is_mentionable TINYINT(1) NOT NULL DEFAULT 0,
+  is_managed TINYINT(1) NOT NULL DEFAULT 0,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (guild_id, role_id),
+  KEY idx_guild_roles_guild_id (guild_id),
+  KEY idx_guild_roles_position (guild_id, position)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Notification channels mapping (guild -> channel id)
 CREATE TABLE IF NOT EXISTS notification_channels (
   guild_id VARCHAR(32) NOT NULL PRIMARY KEY,
@@ -77,6 +95,14 @@ CREATE TABLE IF NOT EXISTS update_notification_roles (
   selected_by VARCHAR(32) NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Generic notification role mapping (guild -> role id)
+CREATE TABLE IF NOT EXISTS notification_roles (
+  guild_id VARCHAR(32) NOT NULL PRIMARY KEY,
+  notification_role_id VARCHAR(32) NOT NULL,
+  selected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  selected_by VARCHAR(32) NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Ban notification channel mapping (guild -> channel id)
 CREATE TABLE IF NOT EXISTS ban_notification_channels (
   guild_id VARCHAR(32) NOT NULL PRIMARY KEY,
@@ -93,6 +119,20 @@ CREATE TABLE IF NOT EXISTS kick_notification_channels (
   selected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   selected_by VARCHAR(32) NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Notification toggles (category + per-notification channel)
+CREATE TABLE IF NOT EXISTS guild_notification_settings (
+  guild_id VARCHAR(32) NOT NULL PRIMARY KEY,
+  notifications_enabled TINYINT(1) NOT NULL DEFAULT 1,
+  queue_notifications_enabled TINYINT(1) NOT NULL DEFAULT 1,
+  welcome_notifications_enabled TINYINT(1) NOT NULL DEFAULT 0,
+  ban_notifications_enabled TINYINT(1) NOT NULL DEFAULT 1,
+  kick_notifications_enabled TINYINT(1) NOT NULL DEFAULT 1,
+  notification_channel_enabled TINYINT(1) NOT NULL DEFAULT 0,
+  update_notification_channel_enabled TINYINT(1) NOT NULL DEFAULT 0,
+  selected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  selected_by VARCHAR(32) NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Temporary bans persistence (required for restart-safe auto-unban)

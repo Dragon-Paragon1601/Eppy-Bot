@@ -4,6 +4,7 @@ const config = require("../../config");
 const guildAvailableSync = require("./guildAvailable");
 const guildMemberSync = require("./guildMemberAdd");
 const guildChannelSync = require("./guildTextChannelAviable");
+const { saveAllGuildRoles } = require("../../functions/handlers/handleRoles");
 const { CREATOR_WATERMARK } = require("../../Creator");
 const { restoreTempBans } = require("../../database/tempBanStore");
 
@@ -25,6 +26,7 @@ async function syncAllGuildData(client) {
         guildAvailableSync.execute(guild),
         guildMemberSync.execute(guild),
         guildChannelSync.execute(guild),
+        saveAllGuildRoles(guild),
       ]);
     }
   } catch (error) {

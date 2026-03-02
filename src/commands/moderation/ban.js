@@ -7,6 +7,10 @@ const {
 const logger = require("./../../logger");
 const pool = require("../../events/mysql/connect");
 const {
+  getGuildNotificationSettings,
+  isNotificationTypeEnabled,
+} = require("../../functions/tools/notificationSettings");
+const {
   scheduleTempBan,
   parseDurationToMs,
   formatDuration,
@@ -222,6 +226,22 @@ module.exports = {
       .setTimestamp();
 
     try {
+      const notificationSettings = await getGuildNotificationSettings(
+        interaction.guild.id,
+        {
+          ensureRow: true,
+        },
+      );
+
+      if (
+        !isNotificationTypeEnabled(
+          notificationSettings,
+          "ban_notifications_enabled",
+        )
+      ) {
+        return interaction.editReply({ embeds: [resultEmbed] });
+      }
+
       const [rows] = await pool.query(
         "SELECT ban_notification_channel_id FROM ban_notification_channels WHERE guild_id = ?",
         [interaction.guild.id],

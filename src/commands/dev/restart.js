@@ -3,6 +3,9 @@ const { exec } = require("child_process");
 const pool = require("../../events/mysql/connect");
 const logger = require("./../../logger");
 const config = require("./../../config");
+const {
+  ensureNotificationSettingsTable,
+} = require("../../functions/tools/notificationSettings");
 
 const restartNoticeTemplates = [
   "Eppy has to rest for a little bit in {delay} seconds.",
@@ -68,8 +71,10 @@ module.exports = {
 
     if (notify) {
       try {
+        await ensureNotificationSettingsTable();
+
         const [rows] = await pool.query(
-          "SELECT guild_id, notification_channel_id FROM notification_channels",
+          "SELECT c.guild_id, c.notification_channel_id FROM notification_channels c INNER JOIN guild_notification_settings s ON c.guild_id = s.guild_id WHERE s.notifications_enabled = 1 AND s.notification_channel_enabled = 1",
         );
 
         const template =

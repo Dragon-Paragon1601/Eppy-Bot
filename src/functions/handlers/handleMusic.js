@@ -12,6 +12,10 @@ const fs = require("fs");
 const config = require("../../config");
 const pool = require("../../events/mysql/connect");
 const runtimeStore = require("../../database/runtimeStore");
+const {
+  getGuildNotificationSettings,
+  isNotificationTypeEnabled,
+} = require("../tools/notificationSettings");
 const firstSongStartedMap = new Map();
 let connections = {};
 let idleTimers = {};
@@ -961,6 +965,19 @@ async function getQueueChannel(guildId) {
 // Send notification to configured channel if present, otherwise fall back to interaction.channel
 async function sendNotification(guildId, interaction, content, options = {}) {
   try {
+    const notificationSettings = await getGuildNotificationSettings(guildId, {
+      ensureRow: true,
+    });
+
+    if (
+      !isNotificationTypeEnabled(
+        notificationSettings,
+        "queue_notifications_enabled",
+      )
+    ) {
+      return null;
+    }
+
     const channelId = await getQueueChannel(guildId);
     if (channelId) {
       try {

@@ -3,6 +3,9 @@ const pool = require("../../events/mysql/connect");
 const config = require("../../config");
 const logger = require("../../logger");
 const { withCreatorSuffix } = require("../../Creator");
+const {
+  ensureNotificationSettingsTable,
+} = require("../../functions/tools/notificationSettings");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -128,13 +131,19 @@ module.exports = {
         });
       }
 
+      await ensureNotificationSettingsTable();
+      await pool.query(
+        "CREATE TABLE IF NOT EXISTS notification_roles (guild_id VARCHAR(32) NOT NULL PRIMARY KEY, notification_role_id VARCHAR(32) NOT NULL, selected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, selected_by VARCHAR(32) NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+      );
+
       const [rows] = await pool.query(
-        "SELECT guild_id, notification_channel_id FROM notification_channels",
+        "SELECT c.guild_id, c.notification_channel_id, r.notification_role_id FROM notification_channels c LEFT JOIN notification_roles r ON c.guild_id = r.guild_id INNER JOIN guild_notification_settings s ON c.guild_id = s.guild_id WHERE s.notifications_enabled = 1 AND s.notification_channel_enabled = 1",
       );
 
       if (!rows.length) {
         return interaction.editReply({
-          content: "ℹ️ No servers have `notification_channel` configured.",
+          content:
+            "ℹ️ No servers have enabled generic notifications with configured `notification_channel`.",
         });
       }
 
@@ -169,10 +178,26 @@ module.exports = {
             continue;
           }
 
-          const mentionText = ping ? "@everyone" : "";
-          const allowedMentions = ping
-            ? { parse: ["everyone"] }
-            : { parse: [] };
+          const guild = interaction.client.guilds.cache.get(row.guild_id);
+
+          let mentionText = "";
+          let allowedMentions = { parse: [] };
+
+          if (ping) {
+            if (row.notification_role_id && guild) {
+              const role = guild.roles.cache.get(row.notification_role_id);
+              if (role) {
+                mentionText = `<@&${row.notification_role_id}>`;
+                allowedMentions = { parse: ["roles"] };
+              } else {
+                mentionText = "@everyone";
+                allowedMentions = { parse: ["everyone"] };
+              }
+            } else {
+              mentionText = "@everyone";
+              allowedMentions = { parse: ["everyone"] };
+            }
+          }
 
           if (!dryRun) {
             await channel.send({
