@@ -25,6 +25,7 @@ const ACTIONS = new Set([
   "enqueue_playlist",
   "enqueue_playlists",
   "jump_to_queue_track",
+  "reorder_queue_track",
   "remove_priority",
   "remove_queue",
   "clear_queue",
@@ -556,6 +557,49 @@ async function applyCommand(client, commandRow) {
     queue.splice(index, 1);
     await music.saveQueue(guildId, queue);
     return "Track removed from queue";
+  }
+
+  if (action === "reorder_queue_track") {
+    const fromIndex = Number(payload.from_index);
+    const toIndex = Number(payload.to_index);
+    const isPriority = normalizeBoolean(payload.is_priority, false);
+
+    if (!Number.isInteger(fromIndex) || !Number.isInteger(toIndex)) {
+      return "Invalid queue position";
+    }
+
+    const targetQueue = isPriority
+      ? music.getPriorityQueue(guildId)
+      : await music.getQueue(guildId);
+
+    if (!Array.isArray(targetQueue) || targetQueue.length < 2) {
+      return "Queue has too few tracks";
+    }
+
+    if (
+      fromIndex < 0 ||
+      toIndex < 0 ||
+      fromIndex >= targetQueue.length ||
+      toIndex >= targetQueue.length
+    ) {
+      return "Queue position out of range";
+    }
+
+    if (fromIndex === toIndex) {
+      return "Queue order unchanged";
+    }
+
+    const reordered = targetQueue.slice();
+    const [movedTrack] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, movedTrack);
+
+    if (isPriority) {
+      targetQueue.splice(0, targetQueue.length, ...reordered);
+      return "Priority queue reordered";
+    }
+
+    await music.saveQueue(guildId, reordered);
+    return "Queue reordered";
   }
 
   if (action === "jump_to_queue_track") {
