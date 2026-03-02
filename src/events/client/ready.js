@@ -1,40 +1,11 @@
 const logger = require("./../../logger");
 const mongoose = require("mongoose");
 const config = require("../../config");
-const guildAvailableSync = require("./guildAvailable");
-const guildMemberSync = require("./guildMemberAdd");
-const guildChannelSync = require("./guildTextChannelAviable");
-const { saveAllGuildRoles } = require("../../functions/handlers/handleRoles");
 const { CREATOR_WATERMARK } = require("../../Creator");
 const { restoreTempBans } = require("../../database/tempBanStore");
+const { syncAllGuildData } = require("../../functions/tools/fullGuildSync");
 
-const ONE_HOUR_MS = 60 * 60 * 1000;
-let isGuildSyncRunning = false;
-
-async function syncAllGuildData(client) {
-  if (isGuildSyncRunning) {
-    return;
-  }
-
-  isGuildSyncRunning = true;
-
-  try {
-    const guilds = client.guilds.cache;
-
-    for (const guild of guilds.values()) {
-      await Promise.allSettled([
-        guildAvailableSync.execute(guild),
-        guildMemberSync.execute(guild),
-        guildChannelSync.execute(guild),
-        saveAllGuildRoles(guild),
-      ]);
-    }
-  } catch (error) {
-    logger.error(`Błąd cyklicznej synchronizacji guildów: ${error}`);
-  } finally {
-    isGuildSyncRunning = false;
-  }
-}
+const FULL_SYNC_INTERVAL_MS = 30 * 60 * 1000;
 
 module.exports = {
   name: "ready",
@@ -48,7 +19,7 @@ module.exports = {
     }
 
     await syncAllGuildData(client);
-    setInterval(() => syncAllGuildData(client), ONE_HOUR_MS);
+    setInterval(() => syncAllGuildData(client), FULL_SYNC_INTERVAL_MS);
 
     logger.info(
       `✅ Ready! ${client.user.tag} jest online na ${client.guilds.cache.size} serwerach!`,

@@ -1,4 +1,7 @@
-const { saveAllGuildUsers } = require("../../functions/handlers/handleUsers");
+const {
+  saveAllGuildUsers,
+  upsertGuildMember,
+} = require("../../functions/handlers/handleUsers");
 const { EmbedBuilder } = require("discord.js");
 const pool = require("../../events/mysql/connect");
 const logger = require("../../logger");
@@ -30,7 +33,7 @@ module.exports = {
     const guild = member.guild;
 
     try {
-      await saveAllGuildUsers(guild);
+      await upsertGuildMember(member);
     } catch (error) {
       logger.error(
         `Błąd podczas zapisu użytkowników dla serwera ${guild.name}: ${error}`,

@@ -40,6 +40,28 @@ module.exports = {
         guildId,
       ]);
       if (rows.length > 0) {
+        const tablesWithGuildId = [
+          "channels",
+          "users",
+          "guild_roles",
+          "queue_channels",
+          "notification_channels",
+          "welcome_channels",
+          "update_notification_channels",
+          "ban_notification_channels",
+          "kick_notification_channels",
+          "notification_roles",
+          "update_notification_roles",
+          "guild_notification_settings",
+          "temp_bans",
+        ];
+
+        for (const tableName of tablesWithGuildId) {
+          await pool.query(`DELETE FROM ${tableName} WHERE guild_id = ?`, [
+            guildId,
+          ]);
+        }
+
         await pool.query("DELETE FROM servers WHERE id = ?", [guildId]);
       } else {
       }

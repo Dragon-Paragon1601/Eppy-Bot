@@ -35,6 +35,62 @@ function resolvePermissionLevel(role) {
   return 0;
 }
 
+async function upsertGuildRole(role) {
+  if (!role?.guild || !role?.id) {
+    return;
+  }
+
+  await pool.query(CREATE_GUILD_ROLES_TABLE_SQL);
+
+  await pool.query(
+    `INSERT INTO guild_roles (
+      guild_id,
+      role_id,
+      role_name,
+      role_color,
+      permission_level,
+      permissions_bitfield,
+      position,
+      is_hoist,
+      is_mentionable,
+      is_managed
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+      role_name = VALUES(role_name),
+      role_color = VALUES(role_color),
+      permission_level = VALUES(permission_level),
+      permissions_bitfield = VALUES(permissions_bitfield),
+      position = VALUES(position),
+      is_hoist = VALUES(is_hoist),
+      is_mentionable = VALUES(is_mentionable),
+      is_managed = VALUES(is_managed),
+      updated_at = CURRENT_TIMESTAMP`,
+    [
+      role.guild.id,
+      String(role.id),
+      role.name,
+      role.color || 0,
+      resolvePermissionLevel(role),
+      String(role.permissions?.bitfield ?? 0n),
+      Number(role.position || 0),
+      role.hoist ? 1 : 0,
+      role.mentionable ? 1 : 0,
+      role.managed ? 1 : 0,
+    ],
+  );
+}
+
+async function removeGuildRole(guildId, roleId) {
+  if (!guildId || !roleId) {
+    return;
+  }
+
+  await pool.query(
+    "DELETE FROM guild_roles WHERE guild_id = ? AND role_id = ?",
+    [guildId, roleId],
+  );
+}
+
 async function saveAllGuildRoles(guild) {
   if (!guild) {
     logger.error("[ERROR] No guild provided - aborting role sync.");
@@ -105,4 +161,8 @@ async function saveAllGuildRoles(guild) {
   }
 }
 
-module.exports = { saveAllGuildRoles };
+module.exports = {
+  saveAllGuildRoles,
+  upsertGuildRole,
+  removeGuildRole,
+};
