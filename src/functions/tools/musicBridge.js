@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const mm = require("music-metadata");
 const { AudioPlayerStatus } = require("@discordjs/voice");
 const logger = require("../../logger");
 const pool = require("../../events/mysql/connect");
@@ -8,6 +9,7 @@ const music = require("../handlers/handleMusic");
 const COMMAND_LIMIT = 20;
 const LOOP_INTERVAL_MS = 2000;
 const LIBRARY_SYNC_INTERVAL_MS = 60000;
+const metadataCache = new Map();
 
 const ACTIONS = new Set([
   "toggle_pause",
@@ -107,18 +109,76 @@ function toTrackKey(songPath) {
   return (relative || songPath).split(path.sep).join("/").toLowerCase();
 }
 
-function toLibraryRow(songPath) {
+function formatDurationLabel(durationSeconds) {
+  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+    return "--:--";
+  }
+
+  const totalSeconds = Math.max(0, Math.floor(durationSeconds));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+async function extractTrackMetadata(songPath) {
+  try {
+    const stat = fs.statSync(songPath);
+    const cached = metadataCache.get(songPath);
+    if (
+      cached &&
+      cached.mtimeMs === stat.mtimeMs &&
+      cached.size === stat.size
+    ) {
+      return cached.meta;
+    }
+
+    const parsed = await mm.parseFile(songPath);
+    const rawTitle = String(parsed.common?.title || "").trim();
+    const rawArtist = String(parsed.common?.artist || "").trim();
+    const durationSeconds = Number(parsed.format?.duration || 0);
+
+    const meta = {
+      title: rawTitle || path.basename(songPath, ".mp3").replace(/_/g, " "),
+      artist: rawArtist || "Unknown artist",
+      duration_seconds: Number.isFinite(durationSeconds)
+        ? Math.floor(durationSeconds)
+        : 0,
+      duration_label: formatDurationLabel(durationSeconds),
+    };
+
+    metadataCache.set(songPath, {
+      mtimeMs: stat.mtimeMs,
+      size: stat.size,
+      meta,
+    });
+
+    return meta;
+  } catch (err) {
+    logger.debug(`extractTrackMetadata fallback for ${songPath}: ${err}`);
+    return {
+      title: path.basename(songPath, ".mp3").replace(/_/g, " "),
+      artist: "Unknown artist",
+      duration_seconds: 0,
+      duration_label: "--:--",
+    };
+  }
+}
+
+async function toLibraryRow(songPath) {
   const trackKey = toTrackKey(songPath);
   const relativeParts = trackKey.split("/");
   const fileName = relativeParts[relativeParts.length - 1] || "";
   const playlistName = relativeParts.length > 1 ? relativeParts[0] : null;
+  const metadata = await extractTrackMetadata(songPath);
 
   return {
     track_key: trackKey,
     track_path: songPath,
     playlist_name: playlistName,
-    title: path.basename(fileName, ".mp3").replace(/_/g, " "),
-    artist: null,
+    title: metadata.title || path.basename(fileName, ".mp3").replace(/_/g, " "),
+    artist: metadata.artist || "Unknown artist",
+    duration_seconds: metadata.duration_seconds || 0,
+    duration_label: metadata.duration_label || "--:--",
     source_type: playlistName ? "folder" : "root",
   };
 }
@@ -288,8 +348,28 @@ async function ensureTables() {
   );
 
   await pool.query(
-    "CREATE TABLE IF NOT EXISTS music_library_tracks (track_key VARCHAR(512) NOT NULL PRIMARY KEY, track_path TEXT NOT NULL, playlist_name VARCHAR(255) NULL, title VARCHAR(255) NOT NULL, artist VARCHAR(255) NULL, source_type ENUM('root','folder') NOT NULL DEFAULT 'folder', updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, KEY idx_music_library_playlist (playlist_name), KEY idx_music_library_title (title)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+    "CREATE TABLE IF NOT EXISTS music_library_tracks (track_key VARCHAR(512) NOT NULL PRIMARY KEY, track_path TEXT NOT NULL, playlist_name VARCHAR(255) NULL, title VARCHAR(255) NOT NULL, artist VARCHAR(255) NULL, duration_seconds INT NOT NULL DEFAULT 0, duration_label VARCHAR(16) NOT NULL DEFAULT '--:--', source_type ENUM('root','folder') NOT NULL DEFAULT 'folder', updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, KEY idx_music_library_playlist (playlist_name), KEY idx_music_library_title (title)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
   );
+
+  try {
+    await pool.query(
+      "ALTER TABLE music_library_tracks ADD COLUMN duration_seconds INT NOT NULL DEFAULT 0",
+    );
+  } catch (err) {
+    if (!String(err?.message || "").includes("Duplicate column")) {
+      throw err;
+    }
+  }
+
+  try {
+    await pool.query(
+      "ALTER TABLE music_library_tracks ADD COLUMN duration_label VARCHAR(16) NOT NULL DEFAULT '--:--'",
+    );
+  } catch (err) {
+    if (!String(err?.message || "").includes("Duplicate column")) {
+      throw err;
+    }
+  }
 
   await pool.query(
     "CREATE TABLE IF NOT EXISTS guild_music_playlists (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, guild_id VARCHAR(32) NOT NULL, name VARCHAR(255) NOT NULL, created_by VARCHAR(32) NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, UNIQUE KEY uniq_guild_playlist_name (guild_id, name), KEY idx_guild_music_playlists_guild (guild_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
@@ -302,19 +382,25 @@ async function ensureTables() {
 
 async function syncLibraryTracksToDatabase() {
   const songPaths = listAllTracks();
-  const libraryRows = songPaths.map((songPath) => toLibraryRow(songPath));
+  const libraryRows = [];
+  for (const songPath of songPaths) {
+    const row = await toLibraryRow(songPath);
+    libraryRows.push(row);
+  }
 
   const activeTrackKeys = new Set();
   for (const track of libraryRows) {
     activeTrackKeys.add(track.track_key);
     await pool.query(
-      "INSERT INTO music_library_tracks (track_key, track_path, playlist_name, title, artist, source_type) VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE track_path = VALUES(track_path), playlist_name = VALUES(playlist_name), title = VALUES(title), artist = VALUES(artist), source_type = VALUES(source_type)",
+      "INSERT INTO music_library_tracks (track_key, track_path, playlist_name, title, artist, duration_seconds, duration_label, source_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE track_path = VALUES(track_path), playlist_name = VALUES(playlist_name), title = VALUES(title), artist = VALUES(artist), duration_seconds = VALUES(duration_seconds), duration_label = VALUES(duration_label), source_type = VALUES(source_type)",
       [
         track.track_key,
         track.track_path,
         track.playlist_name,
         track.title,
         track.artist,
+        track.duration_seconds,
+        track.duration_label,
         track.source_type,
       ],
     );

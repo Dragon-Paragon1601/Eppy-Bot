@@ -46,6 +46,8 @@ CREATE TABLE IF NOT EXISTS music_library_tracks (
   playlist_name VARCHAR(255) NULL,
   title VARCHAR(255) NOT NULL,
   artist VARCHAR(255) NULL,
+  duration_seconds INT NOT NULL DEFAULT 0,
+  duration_label VARCHAR(16) NOT NULL DEFAULT '--:--',
   source_type ENUM('root','folder') NOT NULL DEFAULT 'folder',
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   KEY idx_music_library_playlist (playlist_name),
