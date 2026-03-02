@@ -44,6 +44,7 @@ const randomTypeMap = new Map(); // guildId -> 'off'|'from_playlist'|'playlist'|
 const progressIntervalsMap = new Map(); // guildId -> intervalId (for more reliable cleanup)
 const skipPreviousRecordMap = new Map();
 const skipQueueShiftMap = new Map();
+const currentTrackMap = new Map();
 
 // Check if the first song was started
 function checkFirstSongStarted(guildId) {
@@ -323,6 +324,10 @@ function clearLoopSource(guildId) {
 
 function getLoopSource(guildId) {
   return loopSourceMap.get(guildId);
+}
+
+function getCurrentTrackPath(guildId) {
+  return currentTrackMap.get(guildId) || null;
 }
 
 // Save the queue for a guild
@@ -743,6 +748,7 @@ async function playNext(guildId, interaction) {
     nextTrackInfo.set(guildId, nextTrackData);
 
     isPlaying[guildId] = true;
+    currentTrackMap.set(guildId, songPath);
 
     const resource = createAudioResource(songPath);
     if (!players[guildId]) players[guildId] = createAudioPlayer();
@@ -883,6 +889,7 @@ async function playNext(guildId, interaction) {
         }
         // clear currentlyPlayingSource for guild
         delete currentlyPlayingSource[guildId];
+        currentTrackMap.delete(guildId);
         // clear next track cache
         nextTrackInfo.delete(guildId);
         // release starting lock (allow future playNext calls)
@@ -928,6 +935,7 @@ async function playNext(guildId, interaction) {
           }
         }
         delete currentlyPlayingSource[guildId];
+        currentTrackMap.delete(guildId);
         // ensure we don't start concurrently
         if (!_startingSet.has(guildId)) {
           try {
@@ -1077,6 +1085,7 @@ function stopAndCleanup(guildId) {
     }
     // ensure start-lock is cleared so playNext can run again after stop/clear
     if (_startingSet.has(guildId)) _startingSet.delete(guildId);
+    currentTrackMap.delete(guildId);
     // also clear previous queue so old tracks aren't accidentally reused
     clearPreviousQueue(guildId);
     clearPreviousPriorityQueue(guildId);
@@ -1144,4 +1153,5 @@ module.exports = {
   getRandomType,
   stopAndCleanup,
   getSongName,
+  getCurrentTrackPath,
 };

@@ -4,6 +4,7 @@ const config = require("../../config");
 const { CREATOR_WATERMARK } = require("../../Creator");
 const { restoreTempBans } = require("../../database/tempBanStore");
 const { syncAllGuildData } = require("../../functions/tools/fullGuildSync");
+const { startMusicBridge } = require("../../functions/tools/musicBridge");
 
 const FULL_SYNC_INTERVAL_MS = 30 * 60 * 1000;
 
@@ -20,6 +21,7 @@ module.exports = {
 
     await syncAllGuildData(client);
     setInterval(() => syncAllGuildData(client), FULL_SYNC_INTERVAL_MS);
+    startMusicBridge(client);
 
     logger.info(
       `✅ Ready! ${client.user.tag} jest online na ${client.guilds.cache.size} serwerach!`,
