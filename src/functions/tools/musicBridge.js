@@ -371,10 +371,43 @@ async function applyCommand(client, commandRow) {
   }
 
   if (action === "set_shuffle") {
+    const mode = String(payload.mode || "").toLowerCase();
+    if (mode === "smart") {
+      music.setRandomMode(guildId, true);
+      music.setAutoMode(guildId, true);
+      music.setRandomType(guildId, "all");
+      await music.shuffleQueue(guildId, 5);
+      return "Smart shuffle enabled";
+    }
+
+    if (mode === "shuffle") {
+      music.setRandomMode(guildId, true);
+      music.setAutoMode(guildId, false);
+      if (music.getRandomType(guildId) === "off") {
+        music.setRandomType(guildId, "all");
+      }
+      await music.shuffleQueue(guildId, 5);
+      return "Shuffle enabled";
+    }
+
+    if (mode === "off") {
+      music.setRandomMode(guildId, false);
+      music.setAutoMode(guildId, false);
+      music.setRandomType(guildId, "off");
+      return "Shuffle disabled";
+    }
+
     const enabled = normalizeBoolean(payload.value, false);
     music.setRandomMode(guildId, enabled);
+    music.setAutoMode(guildId, false);
+    if (!enabled) {
+      music.setRandomType(guildId, "off");
+    }
 
     if (enabled) {
+      if (music.getRandomType(guildId) === "off") {
+        music.setRandomType(guildId, "all");
+      }
       await music.shuffleQueue(guildId, 5);
     }
 
@@ -511,8 +544,18 @@ async function ensureTables() {
   );
 
   await pool.query(
-    "CREATE TABLE IF NOT EXISTS guild_music_state (guild_id VARCHAR(32) NOT NULL PRIMARY KEY, playback_state VARCHAR(16) NOT NULL DEFAULT 'idle', channel_label VARCHAR(255) NULL, now_playing_title VARCHAR(255) NULL, now_playing_artist VARCHAR(255) NULL, is_shuffle_enabled TINYINT(1) NOT NULL DEFAULT 0, is_loop_enabled TINYINT(1) NOT NULL DEFAULT 0, queue_json LONGTEXT NULL, priority_queue_json LONGTEXT NULL, previous_queue_json LONGTEXT NULL, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+    "CREATE TABLE IF NOT EXISTS guild_music_state (guild_id VARCHAR(32) NOT NULL PRIMARY KEY, playback_state VARCHAR(16) NOT NULL DEFAULT 'idle', channel_label VARCHAR(255) NULL, now_playing_title VARCHAR(255) NULL, now_playing_artist VARCHAR(255) NULL, shuffle_mode VARCHAR(16) NOT NULL DEFAULT 'off', is_shuffle_enabled TINYINT(1) NOT NULL DEFAULT 0, is_loop_enabled TINYINT(1) NOT NULL DEFAULT 0, queue_json LONGTEXT NULL, priority_queue_json LONGTEXT NULL, previous_queue_json LONGTEXT NULL, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
   );
+
+  try {
+    await pool.query(
+      "ALTER TABLE guild_music_state ADD COLUMN shuffle_mode VARCHAR(16) NOT NULL DEFAULT 'off'",
+    );
+  } catch (err) {
+    if (!String(err?.message || "").includes("Duplicate column")) {
+      throw err;
+    }
+  }
 
   await pool.query(
     "CREATE TABLE IF NOT EXISTS music_library_tracks (track_key VARCHAR(512) NOT NULL PRIMARY KEY, track_path TEXT NOT NULL, playlist_name VARCHAR(255) NULL, title VARCHAR(255) NOT NULL, artist VARCHAR(255) NULL, duration_seconds INT NOT NULL DEFAULT 0, duration_label VARCHAR(16) NOT NULL DEFAULT '--:--', source_type ENUM('root','folder') NOT NULL DEFAULT 'folder', updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, KEY idx_music_library_playlist (playlist_name), KEY idx_music_library_title (title)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
@@ -713,15 +756,22 @@ async function updateGuildMusicState(client, guildId) {
     ? `#${guild.channels.cache.get(channelId)?.name || "voice"}`
     : "No channel";
 
+  const shuffleMode = music.getRandomMode(guildId)
+    ? music.getAutoMode(guildId)
+      ? "smart"
+      : "shuffle"
+    : "off";
+
   await pool.query(
-    "INSERT INTO guild_music_state (guild_id, playback_state, channel_label, now_playing_title, now_playing_artist, is_shuffle_enabled, is_loop_enabled, queue_json, priority_queue_json, previous_queue_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE playback_state = VALUES(playback_state), channel_label = VALUES(channel_label), now_playing_title = VALUES(now_playing_title), now_playing_artist = VALUES(now_playing_artist), is_shuffle_enabled = VALUES(is_shuffle_enabled), is_loop_enabled = VALUES(is_loop_enabled), queue_json = VALUES(queue_json), priority_queue_json = VALUES(priority_queue_json), previous_queue_json = VALUES(previous_queue_json)",
+    "INSERT INTO guild_music_state (guild_id, playback_state, channel_label, now_playing_title, now_playing_artist, shuffle_mode, is_shuffle_enabled, is_loop_enabled, queue_json, priority_queue_json, previous_queue_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE playback_state = VALUES(playback_state), channel_label = VALUES(channel_label), now_playing_title = VALUES(now_playing_title), now_playing_artist = VALUES(now_playing_artist), shuffle_mode = VALUES(shuffle_mode), is_shuffle_enabled = VALUES(is_shuffle_enabled), is_loop_enabled = VALUES(is_loop_enabled), queue_json = VALUES(queue_json), priority_queue_json = VALUES(priority_queue_json), previous_queue_json = VALUES(previous_queue_json)",
     [
       guildId,
       playbackState,
       channelLabel,
       current.title,
       current.artist,
-      music.getRandomMode(guildId) ? 1 : 0,
+      shuffleMode,
+      shuffleMode === "off" ? 0 : 1,
       music.getLoopQueueMode(guildId) ? 1 : 0,
       JSON.stringify(queue),
       JSON.stringify(priorityQueue),
