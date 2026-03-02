@@ -252,6 +252,25 @@ function shuffleTrackPaths(trackPaths) {
   return shuffled;
 }
 
+async function applyGuildShuffleMode(guildId, trackPaths) {
+  const safeTracks = Array.isArray(trackPaths) ? trackPaths.slice() : [];
+  if (safeTracks.length <= 1) {
+    return safeTracks;
+  }
+
+  const isShuffleEnabled = music.getRandomMode(guildId);
+  if (!isShuffleEnabled) {
+    return safeTracks;
+  }
+
+  const isSmartShuffleEnabled = music.getAutoMode(guildId);
+  if (isSmartShuffleEnabled) {
+    return await music.smartShuffleTracks(guildId, safeTracks);
+  }
+
+  return shuffleTrackPaths(safeTracks);
+}
+
 async function resolvePlaylistTrackPaths(guildId, payload = {}) {
   const playlistScope = String(payload.playlist_scope || "").toLowerCase();
   const numericPlaylistId = Number(payload.playlist_id);
@@ -376,7 +395,10 @@ async function applyCommand(client, commandRow) {
       music.setRandomMode(guildId, true);
       music.setAutoMode(guildId, true);
       music.setRandomType(guildId, "all");
-      await music.shuffleQueue(guildId, 5);
+
+      const queue = await music.getQueue(guildId);
+      const nextQueue = await applyGuildShuffleMode(guildId, queue);
+      await music.saveQueue(guildId, nextQueue);
       return "Smart shuffle enabled";
     }
 
@@ -386,7 +408,10 @@ async function applyCommand(client, commandRow) {
       if (music.getRandomType(guildId) === "off") {
         music.setRandomType(guildId, "all");
       }
-      await music.shuffleQueue(guildId, 5);
+
+      const queue = await music.getQueue(guildId);
+      const nextQueue = await applyGuildShuffleMode(guildId, queue);
+      await music.saveQueue(guildId, nextQueue);
       return "Shuffle enabled";
     }
 
@@ -408,7 +433,10 @@ async function applyCommand(client, commandRow) {
       if (music.getRandomType(guildId) === "off") {
         music.setRandomType(guildId, "all");
       }
-      await music.shuffleQueue(guildId, 5);
+
+      const queue = await music.getQueue(guildId);
+      const nextQueue = await applyGuildShuffleMode(guildId, queue);
+      await music.saveQueue(guildId, nextQueue);
     }
 
     return enabled ? "Shuffle enabled" : "Shuffle disabled";
@@ -447,18 +475,18 @@ async function applyCommand(client, commandRow) {
       return "Playlist is empty";
     }
 
-    const shouldShufflePlaylist = music.getRandomMode(guildId);
-    const tracksToQueue = shouldShufflePlaylist
-      ? shuffleTrackPaths(playlistTrackPaths)
-      : playlistTrackPaths;
+    const tracksToQueue = await applyGuildShuffleMode(
+      guildId,
+      playlistTrackPaths,
+    );
 
     const queue = await music.getQueue(guildId);
     const nextQueue = Array.isArray(queue) ? queue.slice() : [];
     nextQueue.push(...tracksToQueue);
     await music.saveQueue(guildId, nextQueue);
 
-    return shouldShufflePlaylist
-      ? `Queued ${tracksToQueue.length} tracks (shuffled)`
+    return music.getRandomMode(guildId)
+      ? `Queued ${tracksToQueue.length} tracks (${music.getAutoMode(guildId) ? "smart shuffled" : "shuffled"})`
       : `Queued ${tracksToQueue.length} tracks`;
   }
 
@@ -485,18 +513,18 @@ async function applyCommand(client, commandRow) {
       return "Selected playlists are empty";
     }
 
-    const shouldShufflePlaylist = music.getRandomMode(guildId);
-    const tracksToQueue = shouldShufflePlaylist
-      ? shuffleTrackPaths(combinedTrackPaths)
-      : combinedTrackPaths;
+    const tracksToQueue = await applyGuildShuffleMode(
+      guildId,
+      combinedTrackPaths,
+    );
 
     const queue = await music.getQueue(guildId);
     const nextQueue = Array.isArray(queue) ? queue.slice() : [];
     nextQueue.push(...tracksToQueue);
     await music.saveQueue(guildId, nextQueue);
 
-    return shouldShufflePlaylist
-      ? `Queued ${tracksToQueue.length} tracks from selected playlists (shuffled)`
+    return music.getRandomMode(guildId)
+      ? `Queued ${tracksToQueue.length} tracks from selected playlists (${music.getAutoMode(guildId) ? "smart shuffled" : "shuffled"})`
       : `Queued ${tracksToQueue.length} tracks from selected playlists`;
   }
 
