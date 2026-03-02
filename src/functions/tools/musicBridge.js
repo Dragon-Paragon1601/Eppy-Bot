@@ -24,6 +24,7 @@ const ACTIONS = new Set([
   "enqueue_priority",
   "enqueue_playlist",
   "enqueue_playlists",
+  "jump_to_queue_track",
   "remove_priority",
   "remove_queue",
   "clear_queue",
@@ -555,6 +556,94 @@ async function applyCommand(client, commandRow) {
     queue.splice(index, 1);
     await music.saveQueue(guildId, queue);
     return "Track removed from queue";
+  }
+
+  if (action === "jump_to_queue_track") {
+    const songPath = await resolveTrackPath(payload);
+    if (!songPath) return "Track not found";
+
+    const queue = await music.getQueue(guildId);
+    const priorityQueue = music.getPriorityQueue(guildId);
+    const preferPriority = normalizeBoolean(payload.is_priority, false);
+
+    let targetSource = null;
+    let targetIndex = -1;
+
+    if (preferPriority) {
+      targetIndex = priorityQueue.findIndex((item) => item === songPath);
+      if (targetIndex >= 0) {
+        targetSource = "priority";
+      }
+    }
+
+    if (!targetSource) {
+      const priorityIndex = priorityQueue.findIndex((item) => item === songPath);
+      if (priorityIndex >= 0) {
+        targetSource = "priority";
+        targetIndex = priorityIndex;
+      }
+    }
+
+    if (!targetSource) {
+      const queueIndex = queue.findIndex((item) => item === songPath);
+      if (queueIndex >= 0) {
+        targetSource = "main";
+        targetIndex = queueIndex;
+      }
+    }
+
+    if (!targetSource || targetIndex < 0) {
+      return "Track not found in queue";
+    }
+
+    if (targetSource === "priority") {
+      if (targetIndex > 0) {
+        priorityQueue.splice(0, targetIndex);
+      }
+    } else {
+      if (priorityQueue.length > 0) {
+        music.clearPriorityQueue(guildId);
+      }
+
+      const currentSource = music.getCurrentSource(guildId);
+      const nextQueue =
+        music.isPlay(guildId) &&
+        currentSource === "main" &&
+        Array.isArray(queue) &&
+        queue.length > 0 &&
+        targetIndex > 0
+          ? [queue[0], ...queue.slice(targetIndex)]
+          : queue.slice(targetIndex);
+
+      await music.saveQueue(guildId, nextQueue);
+    }
+
+    if (music.isPlay(guildId)) {
+      music.playersStop(guildId);
+      return "Jumping to selected track";
+    }
+
+    const connection = music.connections[guildId];
+    let channelId = connection?.joinConfig?.channelId;
+
+    if (!channelId) {
+      const requesterId = commandRow.requested_by;
+      if (requesterId) {
+        const [voiceRows] = await pool.query(
+          "SELECT channel_id FROM guild_user_voice_states WHERE guild_id = ? AND user_id = ? LIMIT 1",
+          [guildId, requesterId],
+        );
+        channelId = voiceRows?.[0]?.channel_id || null;
+      }
+    }
+
+    const interaction = buildPseudoInteraction(guild, channelId);
+    if (!interaction) {
+      return "Jump target prepared. Start playback to continue";
+    }
+
+    await music.playNext(guildId, interaction);
+    return "Now playing selected track";
   }
 
   if (action === "clear_queue") {

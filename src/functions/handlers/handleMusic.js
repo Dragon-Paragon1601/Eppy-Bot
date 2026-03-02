@@ -330,6 +330,10 @@ function getCurrentTrackPath(guildId) {
   return currentTrackMap.get(guildId) || null;
 }
 
+function getCurrentSource(guildId) {
+  return currentlyPlayingSource[guildId] || null;
+}
+
 // Save the queue for a guild
 async function saveQueue(guildId, queue) {
   await runtimeStore.saveQueue(guildId, queue);
@@ -1154,4 +1158,5 @@ module.exports = {
   stopAndCleanup,
   getSongName,
   getCurrentTrackPath,
+  getCurrentSource,
 };
