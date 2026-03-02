@@ -22,6 +22,8 @@ const ACTIONS = new Set([
   "set_shuffle",
   "set_loop",
   "enqueue_priority",
+  "enqueue_playlist",
+  "enqueue_playlists",
   "remove_priority",
   "remove_queue",
   "clear_queue",
@@ -238,6 +240,56 @@ function buildPseudoInteraction(guild, channelId) {
   };
 }
 
+function shuffleTrackPaths(trackPaths) {
+  const shuffled = trackPaths.slice();
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const randomIndex = Math.floor(Math.random() * (index + 1));
+    [shuffled[index], shuffled[randomIndex]] = [
+      shuffled[randomIndex],
+      shuffled[index],
+    ];
+  }
+  return shuffled;
+}
+
+async function resolvePlaylistTrackPaths(guildId, payload = {}) {
+  const playlistScope = String(payload.playlist_scope || "").toLowerCase();
+  const numericPlaylistId = Number(payload.playlist_id);
+  const playlistId =
+    Number.isInteger(numericPlaylistId) && numericPlaylistId > 0
+      ? numericPlaylistId
+      : null;
+  const playlistName = String(payload.playlist_name || "").trim();
+
+  if (playlistScope === "user" || playlistId) {
+    if (!playlistId) {
+      return [];
+    }
+
+    const [rows] = await pool.query(
+      "SELECT l.track_path FROM guild_music_playlist_tracks pt INNER JOIN guild_music_playlists p ON p.id = pt.playlist_id INNER JOIN music_library_tracks l ON l.track_key = pt.track_key WHERE p.guild_id = ? AND pt.playlist_id = ? ORDER BY pt.position ASC, pt.created_at ASC",
+      [guildId, playlistId],
+    );
+
+    return (rows || [])
+      .map((row) => row?.track_path)
+      .filter((trackPath) => typeof trackPath === "string" && trackPath.length);
+  }
+
+  if (!playlistName.length) {
+    return [];
+  }
+
+  const [rows] = await pool.query(
+    "SELECT track_path FROM music_library_tracks WHERE playlist_name = ? ORDER BY title ASC",
+    [playlistName],
+  );
+
+  return (rows || [])
+    .map((row) => row?.track_path)
+    .filter((trackPath) => typeof trackPath === "string" && trackPath.length);
+}
+
 async function applyCommand(client, commandRow) {
   const guildId = commandRow.guild_id;
   const action = String(commandRow.action || "");
@@ -351,6 +403,68 @@ async function applyCommand(client, commandRow) {
     }
 
     return "Track added to priority queue";
+  }
+
+  if (action === "enqueue_playlist") {
+    const playlistTrackPaths = await resolvePlaylistTrackPaths(
+      guildId,
+      payload,
+    );
+    if (!playlistTrackPaths.length) {
+      return "Playlist is empty";
+    }
+
+    const shouldShufflePlaylist = music.getRandomMode(guildId);
+    const tracksToQueue = shouldShufflePlaylist
+      ? shuffleTrackPaths(playlistTrackPaths)
+      : playlistTrackPaths;
+
+    const queue = await music.getQueue(guildId);
+    const nextQueue = Array.isArray(queue) ? queue.slice() : [];
+    nextQueue.push(...tracksToQueue);
+    await music.saveQueue(guildId, nextQueue);
+
+    return shouldShufflePlaylist
+      ? `Queued ${tracksToQueue.length} tracks (shuffled)`
+      : `Queued ${tracksToQueue.length} tracks`;
+  }
+
+  if (action === "enqueue_playlists") {
+    const sourcePlaylists = Array.isArray(payload.playlists)
+      ? payload.playlists
+      : [];
+    if (!sourcePlaylists.length) {
+      return "No playlists selected";
+    }
+
+    const combinedTrackPaths = [];
+    for (const playlistPayload of sourcePlaylists) {
+      const playlistTrackPaths = await resolvePlaylistTrackPaths(
+        guildId,
+        playlistPayload,
+      );
+      if (playlistTrackPaths.length) {
+        combinedTrackPaths.push(...playlistTrackPaths);
+      }
+    }
+
+    if (!combinedTrackPaths.length) {
+      return "Selected playlists are empty";
+    }
+
+    const shouldShufflePlaylist = music.getRandomMode(guildId);
+    const tracksToQueue = shouldShufflePlaylist
+      ? shuffleTrackPaths(combinedTrackPaths)
+      : combinedTrackPaths;
+
+    const queue = await music.getQueue(guildId);
+    const nextQueue = Array.isArray(queue) ? queue.slice() : [];
+    nextQueue.push(...tracksToQueue);
+    await music.saveQueue(guildId, nextQueue);
+
+    return shouldShufflePlaylist
+      ? `Queued ${tracksToQueue.length} tracks from selected playlists (shuffled)`
+      : `Queued ${tracksToQueue.length} tracks from selected playlists`;
   }
 
   if (action === "remove_priority") {
