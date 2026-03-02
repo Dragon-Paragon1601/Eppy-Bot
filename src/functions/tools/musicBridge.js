@@ -17,6 +17,7 @@ const ACTIONS = new Set([
   "toggle_pause",
   "next",
   "previous",
+  "start_playback",
   "set_shuffle",
   "set_loop",
   "enqueue_priority",
@@ -216,9 +217,7 @@ async function resolveTrackPath(payload = {}) {
   return null;
 }
 
-function buildPseudoInteraction(guildId, guild) {
-  const connection = music.connections[guildId];
-  const channelId = connection?.joinConfig?.channelId;
+function buildPseudoInteraction(guild, channelId) {
   if (!channelId || !guild) return null;
 
   const voiceChannel = guild.channels.cache.get(channelId);
@@ -248,6 +247,10 @@ async function applyCommand(client, commandRow) {
 
   const guild = client.guilds.cache.get(guildId);
 
+  if (!guild) {
+    return "Guild unavailable";
+  }
+
   if (action === "toggle_pause") {
     const player = music.players[guildId];
     if (!player) return "No active player";
@@ -275,6 +278,44 @@ async function applyCommand(client, commandRow) {
     return "Playing previous track";
   }
 
+  if (action === "start_playback") {
+    if (music.isPlay(guildId)) {
+      return "Already playing";
+    }
+
+    const requesterId = commandRow.requested_by;
+    if (!requesterId) {
+      return "Missing requester";
+    }
+
+    const [voiceRows] = await pool.query(
+      "SELECT channel_id FROM guild_user_voice_states WHERE guild_id = ? AND user_id = ? LIMIT 1",
+      [guildId, requesterId],
+    );
+
+    const channelId = voiceRows?.[0]?.channel_id || null;
+    if (!channelId) {
+      return "Requester is not in a voice channel";
+    }
+
+    const interaction = buildPseudoInteraction(guild, channelId);
+    if (!interaction) {
+      return "Voice channel unavailable";
+    }
+
+    const queue = await music.getQueue(guildId);
+    const priorityQueue = music.getPriorityQueue(guildId);
+    if (
+      (!queue || queue.length === 0) &&
+      (!priorityQueue || priorityQueue.length === 0)
+    ) {
+      return "Queue is empty";
+    }
+
+    await music.playNext(guildId, interaction);
+    return "Playback started";
+  }
+
   if (action === "set_shuffle") {
     const enabled = normalizeBoolean(payload.value, false);
     music.setRandomMode(guildId, enabled);
@@ -299,7 +340,9 @@ async function applyCommand(client, commandRow) {
     music.addToPriorityQueue(guildId, songPath);
 
     if (!music.isPlay(guildId)) {
-      const interaction = buildPseudoInteraction(guildId, guild);
+      const connection = music.connections[guildId];
+      const channelId = connection?.joinConfig?.channelId;
+      const interaction = buildPseudoInteraction(guild, channelId);
       if (interaction) {
         await music.playNext(guildId, interaction);
       }
@@ -378,8 +421,44 @@ async function ensureTables() {
   );
 
   await pool.query(
-    "CREATE TABLE IF NOT EXISTS guild_music_playlist_tracks (playlist_id BIGINT UNSIGNED NOT NULL, track_key VARCHAR(512) NOT NULL, position INT NOT NULL DEFAULT 0, added_by VARCHAR(32) NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (playlist_id, track_key), KEY idx_guild_music_playlist_tracks_position (playlist_id, position), CONSTRAINT fk_guild_music_playlist_tracks_playlist FOREIGN KEY (playlist_id) REFERENCES guild_music_playlists(id) ON DELETE CASCADE, CONSTRAINT fk_guild_music_playlist_tracks_track FOREIGN KEY (track_key) REFERENCES music_library_tracks(track_key) ON DELETE CASCADE) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+    "CREATE TABLE IF NOT EXISTS guild_music_playlist_tracks (playlist_id BIGINT UNSIGNED NOT NULL, track_key VARCHAR(512) NOT NULL, position INT NOT NULL DEFAULT 0, added_by VARCHAR(32) NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (playlist_id, track_key), KEY idx_guild_music_playlist_tracks_position (playlist_id, position), KEY idx_guild_music_playlist_tracks_track (track_key)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
   );
+
+  await pool.query(
+    "CREATE TABLE IF NOT EXISTS guild_user_voice_states (guild_id VARCHAR(32) NOT NULL, user_id VARCHAR(32) NOT NULL, channel_id VARCHAR(32) NOT NULL, channel_name VARCHAR(255) NULL, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, PRIMARY KEY (guild_id, user_id), KEY idx_guild_voice_channel (guild_id, channel_id), KEY idx_guild_voice_updated (updated_at)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+  );
+}
+
+async function resetPlaybackStateAfterRestart() {
+  await pool.query(
+    "UPDATE guild_music_state SET playback_state = 'idle', channel_label = 'No channel', now_playing_title = 'Nothing playing', now_playing_artist = '' WHERE playback_state IN ('playing', 'paused')",
+  );
+
+  await pool.query(
+    "UPDATE music_command_queue SET status = 'pending' WHERE status = 'processing'",
+  );
+}
+
+async function syncVoiceStatesSnapshot(client) {
+  for (const guild of client.guilds.cache.values()) {
+    await pool.query("DELETE FROM guild_user_voice_states WHERE guild_id = ?", [
+      guild.id,
+    ]);
+
+    const voiceStates = guild.voiceStates?.cache
+      ? Array.from(guild.voiceStates.cache.values())
+      : [];
+
+    for (const voiceState of voiceStates) {
+      if (!voiceState?.channelId || !voiceState?.id) continue;
+
+      const channelName = voiceState.channel?.name || null;
+      await pool.query(
+        "INSERT INTO guild_user_voice_states (guild_id, user_id, channel_id, channel_name) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE channel_id = VALUES(channel_id), channel_name = VALUES(channel_name)",
+        [guild.id, voiceState.id, voiceState.channelId, channelName],
+      );
+    }
+  }
 }
 
 async function syncLibraryTracksToDatabase() {
@@ -486,7 +565,7 @@ async function updateGuildMusicState(client, guildId) {
 
 async function processPendingCommands(client) {
   const [rows] = await pool.query(
-    "SELECT id, guild_id, action, payload_json FROM music_command_queue WHERE status = 'pending' ORDER BY id ASC LIMIT ?",
+    "SELECT id, guild_id, action, payload_json, requested_by FROM music_command_queue WHERE status = 'pending' ORDER BY id ASC LIMIT ?",
     [COMMAND_LIMIT],
   );
 
@@ -554,6 +633,7 @@ function startMusicBridge(client) {
   let isRunning = false;
   let lastLibrarySyncAt = 0;
   let lastCommandCleanupAt = 0;
+  let didStartupRecovery = false;
 
   const tick = async () => {
     if (isRunning) return;
@@ -561,6 +641,11 @@ function startMusicBridge(client) {
 
     try {
       await ensureTables();
+      if (!didStartupRecovery) {
+        await resetPlaybackStateAfterRestart();
+        await syncVoiceStatesSnapshot(client);
+        didStartupRecovery = true;
+      }
       const now = Date.now();
       if (now - lastLibrarySyncAt >= LIBRARY_SYNC_INTERVAL_MS) {
         await syncLibraryTracksToDatabase();

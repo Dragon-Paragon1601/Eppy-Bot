@@ -75,8 +75,7 @@ CREATE TABLE IF NOT EXISTS guild_music_playlist_tracks (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (playlist_id, track_key),
   KEY idx_guild_music_playlist_tracks_position (playlist_id, position),
-  CONSTRAINT fk_guild_music_playlist_tracks_playlist FOREIGN KEY (playlist_id) REFERENCES guild_music_playlists(id) ON DELETE CASCADE,
-  CONSTRAINT fk_guild_music_playlist_tracks_track FOREIGN KEY (track_key) REFERENCES music_library_tracks(track_key) ON DELETE CASCADE
+  KEY idx_guild_music_playlist_tracks_track (track_key)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Queue channels mapping (guild -> channel id)
@@ -226,4 +225,16 @@ CREATE TABLE IF NOT EXISTS servers (
   icon VARCHAR(512),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Current user voice presence per guild (used by dashboard start playback)
+CREATE TABLE IF NOT EXISTS guild_user_voice_states (
+  guild_id VARCHAR(32) NOT NULL,
+  user_id VARCHAR(32) NOT NULL,
+  channel_id VARCHAR(32) NOT NULL,
+  channel_name VARCHAR(255) NULL,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (guild_id, user_id),
+  KEY idx_guild_voice_channel (guild_id, channel_id),
+  KEY idx_guild_voice_updated (updated_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
