@@ -29,15 +29,20 @@ module.exports = {
   name: "voiceStateUpdate",
   async execute(oldState, newState) {
     try {
-      if (!pool?.isAvailable || !pool.isAvailable()) return;
-
       const guildId = newState?.guild?.id || oldState?.guild?.id;
       const userId = newState?.id || oldState?.id;
       if (!guildId || !userId) return;
 
       await ensureVoiceTable();
 
-      const channelId = newState?.channelId || null;
+      const oldChannelId = oldState?.channelId || null;
+      const newChannelId = newState?.channelId || null;
+
+      if (oldChannelId === newChannelId) {
+        return;
+      }
+
+      const channelId = newChannelId;
       const channelName = newState?.channel?.name || null;
 
       if (!channelId) {

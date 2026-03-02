@@ -456,13 +456,48 @@ async function syncVoiceStatesSnapshot(client) {
       guild.id,
     ]);
 
+    try {
+      await guild.channels.fetch();
+    } catch (error) {
+      logger.debug(
+        `syncVoiceStatesSnapshot channels fetch failed for ${guild.id}: ${error}`,
+      );
+    }
+
+    const trackedUsers = new Set();
+
+    const channels = guild.channels?.cache
+      ? Array.from(guild.channels.cache.values())
+      : [];
+
+    for (const channel of channels) {
+      if (!channel?.isVoiceBased?.()) continue;
+
+      const members = channel.members
+        ? Array.from(channel.members.values())
+        : [];
+
+      for (const member of members) {
+        const memberId = member?.id;
+        if (!memberId || trackedUsers.has(memberId)) continue;
+
+        trackedUsers.add(memberId);
+        await pool.query(
+          "INSERT INTO guild_user_voice_states (guild_id, user_id, channel_id, channel_name) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE channel_id = VALUES(channel_id), channel_name = VALUES(channel_name)",
+          [guild.id, memberId, channel.id, channel.name || null],
+        );
+      }
+    }
+
     const voiceStates = guild.voiceStates?.cache
       ? Array.from(guild.voiceStates.cache.values())
       : [];
 
     for (const voiceState of voiceStates) {
       if (!voiceState?.channelId || !voiceState?.id) continue;
+      if (trackedUsers.has(voiceState.id)) continue;
 
+      trackedUsers.add(voiceState.id);
       const channelName = voiceState.channel?.name || null;
       await pool.query(
         "INSERT INTO guild_user_voice_states (guild_id, user_id, channel_id, channel_name) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE channel_id = VALUES(channel_id), channel_name = VALUES(channel_name)",

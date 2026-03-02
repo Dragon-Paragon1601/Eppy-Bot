@@ -14,25 +14,38 @@ setMySqlConfigured(mysqlConfigured);
 
 let pool = null;
 let mysqlReady = false;
+let reconnectPromise = null;
 
 async function restoreConnection() {
-  if (!pool) {
-    mysqlReady = false;
-    setMySqlReady(false);
-    return false;
+  if (reconnectPromise) {
+    return reconnectPromise;
   }
 
+  reconnectPromise = (async () => {
+    if (!pool) {
+      mysqlReady = false;
+      setMySqlReady(false);
+      return false;
+    }
+
+    try {
+      const connection = await pool.getConnection();
+      connection.release();
+      mysqlReady = true;
+      setMySqlReady(true);
+      return true;
+    } catch (error) {
+      mysqlReady = false;
+      setMySqlReady(false);
+      logger.warn(`MySQL reconnect attempt failed: ${error}`);
+      return false;
+    }
+  })();
+
   try {
-    const connection = await pool.getConnection();
-    connection.release();
-    mysqlReady = true;
-    setMySqlReady(true);
-    return true;
-  } catch (error) {
-    mysqlReady = false;
-    setMySqlReady(false);
-    logger.warn(`MySQL reconnect attempt failed: ${error}`);
-    return false;
+    return await reconnectPromise;
+  } finally {
+    reconnectPromise = null;
   }
 }
 
@@ -106,7 +119,11 @@ async function query(sql, params = []) {
 }
 
 function isAvailable() {
-  return !!pool && mysqlReady;
+  if (!pool) return false;
+  if (mysqlReady) return true;
+
+  restoreConnection().catch(() => null);
+  return false;
 }
 
 module.exports = {
