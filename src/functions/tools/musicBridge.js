@@ -24,6 +24,7 @@ const ACTIONS = new Set([
   "enqueue_priority",
   "remove_priority",
   "remove_queue",
+  "clear_queue",
 ]);
 
 function parseJsonSafe(raw, fallback = {}) {
@@ -379,6 +380,12 @@ async function applyCommand(client, commandRow) {
     queue.splice(index, 1);
     await music.saveQueue(guildId, queue);
     return "Track removed from queue";
+  }
+
+  if (action === "clear_queue") {
+    await music.clearQueue(guildId);
+    music.clearPriorityQueue(guildId);
+    return "Queue cleared";
   }
 
   return "Ignored";
