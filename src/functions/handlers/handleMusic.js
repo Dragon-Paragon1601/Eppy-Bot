@@ -725,6 +725,10 @@ async function playNext(guildId, interaction) {
       }
     }
 
+    logger.debug(
+      `Voice readiness for ${guildId}: ready=${isConnectionReady}, status=${connections[guildId]?.state?.status || "unknown"}`,
+    );
+
     // choose next song: previous-priority queue > priority queue > main queue
     let songPath;
     const ppQueue = getPreviousPriorityQueue(guildId);
@@ -799,10 +803,18 @@ async function playNext(guildId, interaction) {
       return;
     }
 
+    logger.debug(
+      `Voice subscription created for ${guildId}. connectionStatus=${connections[guildId]?.state?.status || "unknown"}`,
+    );
+
     players[guildId].play(resource);
     if (players[guildId].state?.status === AudioPlayerStatus.Paused) {
       players[guildId].unpause();
     }
+
+    logger.debug(
+      `Player state after play for ${guildId}: ${players[guildId].state?.status || "unknown"}`,
+    );
 
     isPlaying[guildId] = true;
     currentTrackMap.set(guildId, songPath);

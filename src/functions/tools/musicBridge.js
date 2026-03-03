@@ -129,6 +129,22 @@ function formatDurationLabel(durationSeconds) {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
+function truncateDbValue(value, maxLength, fallback = "") {
+  const normalized = String(value || fallback).trim();
+  if (!normalized.length) {
+    return fallback;
+  }
+  return normalized.slice(0, maxLength);
+}
+
+async function hasColumn(tableName, columnName) {
+  const [rows] = await pool.query(
+    "SELECT 1 AS has_column FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ? LIMIT 1",
+    [tableName, columnName],
+  );
+  return !!rows?.length;
+}
+
 async function extractTrackMetadata(songPath) {
   try {
     const stat = fs.statSync(songPath);
@@ -180,12 +196,23 @@ async function toLibraryRow(songPath) {
   const playlistName = relativeParts.length > 1 ? relativeParts[0] : null;
   const metadata = await extractTrackMetadata(songPath);
 
+  const safeTitle = truncateDbValue(
+    metadata.title || path.basename(fileName, ".mp3").replace(/_/g, " "),
+    255,
+    "Unknown title",
+  );
+  const safeArtist = truncateDbValue(
+    metadata.artist || "Unknown artist",
+    255,
+    "Unknown artist",
+  );
+
   return {
     track_key: trackKey,
     track_path: songPath,
     playlist_name: playlistName,
-    title: metadata.title || path.basename(fileName, ".mp3").replace(/_/g, " "),
-    artist: metadata.artist || "Unknown artist",
+    title: safeTitle,
+    artist: safeArtist,
     duration_seconds: metadata.duration_seconds || 0,
     duration_label: metadata.duration_label || "--:--",
     source_type: playlistName ? "folder" : "root",
@@ -368,14 +395,34 @@ async function applyCommand(client, commandRow) {
       return "Missing requester";
     }
 
-    const [voiceRows] = await pool.query(
-      "SELECT channel_id FROM guild_user_voice_states WHERE guild_id = ? AND user_id = ? LIMIT 1",
-      [guildId, requesterId],
-    );
+    let channelId = null;
+    try {
+      const requesterMember = await guild.members.fetch(requesterId);
+      channelId = requesterMember?.voice?.channelId || null;
+    } catch (err) {
+      logger.debug(
+        `start_playback live voice fetch failed for ${requesterId} in ${guildId}: ${err}`,
+      );
+    }
 
-    const channelId = voiceRows?.[0]?.channel_id || null;
+    if (!channelId) {
+      const [voiceRows] = await pool.query(
+        "SELECT channel_id FROM guild_user_voice_states WHERE guild_id = ? AND user_id = ? LIMIT 1",
+        [guildId, requesterId],
+      );
+      channelId = voiceRows?.[0]?.channel_id || null;
+    }
+
     if (!channelId) {
       return "Requester is not in a voice channel";
+    }
+
+    try {
+      await guild.channels.fetch(channelId);
+    } catch (err) {
+      logger.debug(
+        `start_playback channel fetch failed for ${channelId} in ${guildId}: ${err}`,
+      );
     }
 
     const interaction = buildPseudoInteraction(guild, channelId);
@@ -725,38 +772,26 @@ async function ensureTables() {
     "CREATE TABLE IF NOT EXISTS guild_music_state (guild_id VARCHAR(32) NOT NULL PRIMARY KEY, playback_state VARCHAR(16) NOT NULL DEFAULT 'idle', channel_label VARCHAR(255) NULL, now_playing_title VARCHAR(255) NULL, now_playing_artist VARCHAR(255) NULL, shuffle_mode VARCHAR(16) NOT NULL DEFAULT 'off', is_shuffle_enabled TINYINT(1) NOT NULL DEFAULT 0, is_loop_enabled TINYINT(1) NOT NULL DEFAULT 0, queue_json LONGTEXT NULL, priority_queue_json LONGTEXT NULL, previous_queue_json LONGTEXT NULL, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
   );
 
-  try {
+  if (!(await hasColumn("guild_music_state", "shuffle_mode"))) {
     await pool.query(
       "ALTER TABLE guild_music_state ADD COLUMN shuffle_mode VARCHAR(16) NOT NULL DEFAULT 'off'",
     );
-  } catch (err) {
-    if (!String(err?.message || "").includes("Duplicate column")) {
-      throw err;
-    }
   }
 
   await pool.query(
     "CREATE TABLE IF NOT EXISTS music_library_tracks (track_key VARCHAR(512) NOT NULL PRIMARY KEY, track_path TEXT NOT NULL, playlist_name VARCHAR(255) NULL, title VARCHAR(255) NOT NULL, artist VARCHAR(255) NULL, duration_seconds INT NOT NULL DEFAULT 0, duration_label VARCHAR(16) NOT NULL DEFAULT '--:--', source_type ENUM('root','folder') NOT NULL DEFAULT 'folder', updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, KEY idx_music_library_playlist (playlist_name), KEY idx_music_library_title (title)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
   );
 
-  try {
+  if (!(await hasColumn("music_library_tracks", "duration_seconds"))) {
     await pool.query(
       "ALTER TABLE music_library_tracks ADD COLUMN duration_seconds INT NOT NULL DEFAULT 0",
     );
-  } catch (err) {
-    if (!String(err?.message || "").includes("Duplicate column")) {
-      throw err;
-    }
   }
 
-  try {
+  if (!(await hasColumn("music_library_tracks", "duration_label"))) {
     await pool.query(
       "ALTER TABLE music_library_tracks ADD COLUMN duration_label VARCHAR(16) NOT NULL DEFAULT '--:--'",
     );
-  } catch (err) {
-    if (!String(err?.message || "").includes("Duplicate column")) {
-      throw err;
-    }
   }
 
   await pool.query(
