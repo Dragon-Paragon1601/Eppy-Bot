@@ -702,18 +702,9 @@ async function playNext(guildId, interaction) {
         15000,
       );
     } catch (error) {
-      logger.error(
-        `❌ Voice connection not ready for ${guildId}: ${error?.message || error}`,
+      logger.warn(
+        `Voice connection not fully ready for ${guildId}: ${error?.message || error}. Continuing with playback attempt.`,
       );
-      try {
-        connections[guildId]?.destroy();
-      } catch (destroyError) {
-        logger.debug(
-          `Voice connection destroy after readiness timeout failed for ${guildId}: ${destroyError}`,
-        );
-      }
-      delete connections[guildId];
-      return;
     }
 
     // choose next song: previous-priority queue > priority queue > main queue
