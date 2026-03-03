@@ -700,7 +700,7 @@ async function playNext(guildId, interaction) {
       await entersState(
         connections[guildId],
         VoiceConnectionStatus.Ready,
-        20000,
+        8000,
       );
       isConnectionReady = true;
     } catch (firstError) {
@@ -715,26 +715,14 @@ async function playNext(guildId, interaction) {
         await entersState(
           connections[guildId],
           VoiceConnectionStatus.Ready,
-          15000,
+          6000,
         );
         isConnectionReady = true;
       } catch (secondError) {
-        logger.error(
-          `❌ Voice connection failed to become ready for ${guildId}: ${secondError?.message || secondError}`,
+        logger.warn(
+          `Voice connection still not ready for ${guildId}: ${secondError?.message || secondError}. Continuing with playback attempt.`,
         );
       }
-    }
-
-    if (!isConnectionReady) {
-      try {
-        connections[guildId]?.destroy();
-      } catch (destroyError) {
-        logger.debug(
-          `Voice connection destroy after readiness failure for ${guildId}: ${destroyError}`,
-        );
-      }
-      delete connections[guildId];
-      return;
     }
 
     // choose next song: previous-priority queue > priority queue > main queue

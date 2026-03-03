@@ -393,7 +393,17 @@ async function applyCommand(client, commandRow) {
     }
 
     await music.playNext(guildId, interaction);
-    return "Playback started";
+    const player = music.players[guildId];
+    if (music.isPlay(guildId)) {
+      return "Playback started";
+    }
+
+    if (player?.state?.status === AudioPlayerStatus.Paused) {
+      const resumed = music.resume(guildId);
+      return resumed ? "Playback resumed" : "Playback paused";
+    }
+
+    return "Playback start failed";
   }
 
   if (action === "set_shuffle") {
