@@ -77,7 +77,7 @@ async function monitorUsage() {
 //}
 
 client.handleEvents();
-client.once("ready", async () => {
+client.once("clientReady", async () => {
   await client.handleCommands();
 });
 client.login(config.token);
@@ -136,10 +136,7 @@ process.on("unhandledRejection", (reason) => {
     logger.warn("MongoDB token not configured. Running in in-memory mode.");
     setMongoReady(false);
   } else {
-    await connect(config.databaseToken, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    })
+    await connect(config.databaseToken)
       .then(() => setMongoReady(true))
       .catch((err) => {
         logger.error(

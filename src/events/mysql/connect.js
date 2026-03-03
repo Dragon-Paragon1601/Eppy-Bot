@@ -16,6 +16,18 @@ let pool = null;
 let mysqlReady = false;
 let reconnectPromise = null;
 
+function isDuplicateColumnMigrationError(error, sql) {
+  const normalizedSql = String(sql || "")
+    .trim()
+    .toUpperCase();
+  if (!normalizedSql.startsWith("ALTER TABLE")) return false;
+
+  const code = String(error?.code || "").toUpperCase();
+  const message = String(error?.message || "").toLowerCase();
+
+  return code === "ER_DUP_FIELDNAME" || message.includes("duplicate column");
+}
+
 async function restoreConnection() {
   if (reconnectPromise) {
     return reconnectPromise;
@@ -98,6 +110,11 @@ async function query(sql, params = []) {
   try {
     return await pool.query(sql, params);
   } catch (error) {
+    if (isDuplicateColumnMigrationError(error, sql)) {
+      logger.debug(`MySQL migration noop (duplicate column): ${error}`);
+      return [[], []];
+    }
+
     mysqlReady = false;
     setMySqlReady(false);
     logger.error(`MySQL query error. Attempting reconnect: ${error}`);
@@ -110,6 +127,13 @@ async function query(sql, params = []) {
     try {
       return await pool.query(sql, params);
     } catch (retryError) {
+      if (isDuplicateColumnMigrationError(retryError, sql)) {
+        logger.debug(
+          `MySQL migration noop after retry (duplicate column): ${retryError}`,
+        );
+        return [[], []];
+      }
+
       mysqlReady = false;
       setMySqlReady(false);
       logger.error(`MySQL query retry failed: ${retryError}`);

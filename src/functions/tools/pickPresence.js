@@ -33,7 +33,7 @@ module.exports = (client) => {
     });
   };
 
-  client.once("ready", () => {
+  client.once("clientReady", () => {
     logger.info("✅ pickPresence.js loaded!");
     client.setDefaultPresence();
   });
