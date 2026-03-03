@@ -367,7 +367,14 @@ async function applyCommand(client, commandRow) {
   }
 
   if (action === "next") {
-    if (!music.isPlay(guildId)) return "No active playback";
+    const player = music.players[guildId];
+    const hasPlayablePlayer =
+      player && player.state?.status !== AudioPlayerStatus.Idle;
+
+    if (!music.isPlay(guildId) && !hasPlayablePlayer) {
+      return "No active playback";
+    }
+
     music.playersStop(guildId);
     return "Skipped to next";
   }
@@ -381,12 +388,13 @@ async function applyCommand(client, commandRow) {
   }
 
   if (action === "start_playback") {
+    const activePlayer = music.players[guildId];
+    if (activePlayer?.state?.status === AudioPlayerStatus.Paused) {
+      const resumed = music.resume(guildId);
+      return resumed ? "Playback resumed" : "Playback paused";
+    }
+
     if (music.isPlay(guildId)) {
-      const player = music.players[guildId];
-      if (player?.state?.status === AudioPlayerStatus.Paused) {
-        const resumed = music.resume(guildId);
-        return resumed ? "Resumed" : "Already playing";
-      }
       return "Already playing";
     }
 

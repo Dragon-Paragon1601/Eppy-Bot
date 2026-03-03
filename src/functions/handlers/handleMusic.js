@@ -729,6 +729,13 @@ async function playNext(guildId, interaction) {
       `Voice readiness for ${guildId}: ready=${isConnectionReady}, status=${connections[guildId]?.state?.status || "unknown"}`,
     );
 
+    if (!isConnectionReady) {
+      logger.error(
+        `❌ Voice transport not ready for ${guildId}. Aborting playback start to avoid silent buffering.`,
+      );
+      return;
+    }
+
     // choose next song: previous-priority queue > priority queue > main queue
     let songPath;
     const ppQueue = getPreviousPriorityQueue(guildId);
@@ -815,6 +822,15 @@ async function playNext(guildId, interaction) {
     logger.debug(
       `Player state after play for ${guildId}: ${players[guildId].state?.status || "unknown"}`,
     );
+
+    try {
+      await entersState(players[guildId], AudioPlayerStatus.Playing, 7000);
+    } catch (playError) {
+      logger.error(
+        `❌ Player did not enter Playing state for ${guildId}: ${playError?.message || playError}`,
+      );
+      return;
+    }
 
     isPlaying[guildId] = true;
     currentTrackMap.set(guildId, songPath);
