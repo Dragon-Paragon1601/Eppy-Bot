@@ -6,7 +6,6 @@ const {
   AudioPlayerStatus,
   entersState,
   VoiceConnectionStatus,
-  NoSubscriberBehavior,
 } = require("@discordjs/voice");
 const { clearAudioFolders } = require("./handleClearAudio");
 const logger = require("./../../logger");
@@ -696,16 +695,46 @@ async function playNext(guildId, interaction) {
       return;
     }
 
+    let isConnectionReady = false;
     try {
       await entersState(
         connections[guildId],
         VoiceConnectionStatus.Ready,
-        15000,
+        20000,
       );
-    } catch (error) {
+      isConnectionReady = true;
+    } catch (firstError) {
       logger.warn(
-        `Voice connection not fully ready for ${guildId}: ${error?.message || error}. Continuing with playback attempt.`,
+        `Voice connection not ready on first attempt for ${guildId}: ${firstError?.message || firstError}`,
       );
+
+      try {
+        if (typeof connections[guildId]?.rejoin === "function") {
+          connections[guildId].rejoin();
+        }
+        await entersState(
+          connections[guildId],
+          VoiceConnectionStatus.Ready,
+          15000,
+        );
+        isConnectionReady = true;
+      } catch (secondError) {
+        logger.error(
+          `❌ Voice connection failed to become ready for ${guildId}: ${secondError?.message || secondError}`,
+        );
+      }
+    }
+
+    if (!isConnectionReady) {
+      try {
+        connections[guildId]?.destroy();
+      } catch (destroyError) {
+        logger.debug(
+          `Voice connection destroy after readiness failure for ${guildId}: ${destroyError}`,
+        );
+      }
+      delete connections[guildId];
+      return;
     }
 
     // choose next song: previous-priority queue > priority queue > main queue
@@ -766,23 +795,30 @@ async function playNext(guildId, interaction) {
     }
     nextTrackInfo.set(guildId, nextTrackData);
 
-    isPlaying[guildId] = true;
-    currentTrackMap.set(guildId, songPath);
-
     const resource = createAudioResource(songPath);
-    if (!players[guildId]) {
-      players[guildId] = createAudioPlayer({
-        behaviors: {
-          noSubscriber: NoSubscriberBehavior.Play,
-        },
-      });
+    if (
+      !players[guildId] ||
+      players[guildId].state?.status === AudioPlayerStatus.Idle
+    ) {
+      players[guildId] = createAudioPlayer();
     }
 
-    connections[guildId].subscribe(players[guildId]);
+    const subscription = connections[guildId].subscribe(players[guildId]);
+    if (!subscription) {
+      logger.error(
+        `❌ Failed to subscribe player to voice connection for ${guildId}`,
+      );
+      return;
+    }
+
     players[guildId].play(resource);
     if (players[guildId].state?.status === AudioPlayerStatus.Paused) {
       players[guildId].unpause();
     }
+
+    isPlaying[guildId] = true;
+    currentTrackMap.set(guildId, songPath);
+
     const songName = await getSongName(songPath);
     const isPrioritySong = currentlyPlayingSource[guildId] === "priority";
     const displayName = isPrioritySong ? `⭐ ${songName}` : songName;
