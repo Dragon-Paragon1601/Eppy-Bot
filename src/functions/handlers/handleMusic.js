@@ -720,7 +720,41 @@ async function playNext(guildId, interaction) {
         isConnectionReady = true;
       } catch (secondError) {
         logger.warn(
-          `Voice connection still not ready for ${guildId}: ${secondError?.message || secondError}. Continuing with playback attempt.`,
+          `Voice connection still not ready after rejoin for ${guildId}: ${secondError?.message || secondError}`,
+        );
+      }
+    }
+
+    if (!isConnectionReady) {
+      logger.warn(
+        `Attempting hard voice reconnect for ${guildId} in channel ${voiceChannel.id}`,
+      );
+
+      try {
+        connections[guildId]?.destroy();
+      } catch (destroyError) {
+        logger.debug(
+          `Voice connection destroy before hard reconnect failed for ${guildId}: ${destroyError}`,
+        );
+      }
+
+      connections[guildId] = joinVoiceChannel({
+        channelId: voiceChannel.id,
+        guildId: guildId,
+        adapterCreator: interaction.guild.voiceAdapterCreator,
+        selfDeaf: true,
+      });
+
+      try {
+        await entersState(
+          connections[guildId],
+          VoiceConnectionStatus.Ready,
+          8000,
+        );
+        isConnectionReady = true;
+      } catch (thirdError) {
+        logger.error(
+          `❌ Voice connection not ready after hard reconnect for ${guildId}: ${thirdError?.message || thirdError}`,
         );
       }
     }
