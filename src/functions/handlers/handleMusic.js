@@ -720,41 +720,7 @@ async function playNext(guildId, interaction) {
         isConnectionReady = true;
       } catch (secondError) {
         logger.warn(
-          `Voice connection still not ready after rejoin for ${guildId}: ${secondError?.message || secondError}`,
-        );
-      }
-    }
-
-    if (!isConnectionReady) {
-      logger.warn(
-        `Attempting hard voice reconnect for ${guildId} in channel ${voiceChannel.id}`,
-      );
-
-      try {
-        connections[guildId]?.destroy();
-      } catch (destroyError) {
-        logger.debug(
-          `Voice connection destroy before hard reconnect failed for ${guildId}: ${destroyError}`,
-        );
-      }
-
-      connections[guildId] = joinVoiceChannel({
-        channelId: voiceChannel.id,
-        guildId: guildId,
-        adapterCreator: interaction.guild.voiceAdapterCreator,
-        selfDeaf: true,
-      });
-
-      try {
-        await entersState(
-          connections[guildId],
-          VoiceConnectionStatus.Ready,
-          8000,
-        );
-        isConnectionReady = true;
-      } catch (thirdError) {
-        logger.error(
-          `❌ Voice connection not ready after hard reconnect for ${guildId}: ${thirdError?.message || thirdError}`,
+          `Voice connection still not ready after rejoin for ${guildId}: ${secondError?.message || secondError}. Continuing with playback attempt.`,
         );
       }
     }
@@ -762,13 +728,6 @@ async function playNext(guildId, interaction) {
     logger.debug(
       `Voice readiness for ${guildId}: ready=${isConnectionReady}, status=${connections[guildId]?.state?.status || "unknown"}`,
     );
-
-    if (!isConnectionReady) {
-      logger.error(
-        `❌ Voice transport not ready for ${guildId}. Aborting playback start to avoid silent buffering.`,
-      );
-      return;
-    }
 
     // choose next song: previous-priority queue > priority queue > main queue
     let songPath;
@@ -856,15 +815,6 @@ async function playNext(guildId, interaction) {
     logger.debug(
       `Player state after play for ${guildId}: ${players[guildId].state?.status || "unknown"}`,
     );
-
-    try {
-      await entersState(players[guildId], AudioPlayerStatus.Playing, 7000);
-    } catch (playError) {
-      logger.error(
-        `❌ Player did not enter Playing state for ${guildId}: ${playError?.message || playError}`,
-      );
-      return;
-    }
 
     isPlaying[guildId] = true;
     currentTrackMap.set(guildId, songPath);
