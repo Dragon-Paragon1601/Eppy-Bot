@@ -355,6 +355,11 @@ async function applyCommand(client, commandRow) {
 
   if (action === "start_playback") {
     if (music.isPlay(guildId)) {
+      const player = music.players[guildId];
+      if (player?.state?.status === AudioPlayerStatus.Paused) {
+        const resumed = music.resume(guildId);
+        return resumed ? "Resumed" : "Already playing";
+      }
       return "Already playing";
     }
 
@@ -621,7 +626,9 @@ async function applyCommand(client, commandRow) {
     }
 
     if (!targetSource) {
-      const priorityIndex = priorityQueue.findIndex((item) => item === songPath);
+      const priorityIndex = priorityQueue.findIndex(
+        (item) => item === songPath,
+      );
       if (priorityIndex >= 0) {
         targetSource = "priority";
         targetIndex = priorityIndex;

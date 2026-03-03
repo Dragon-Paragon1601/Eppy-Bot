@@ -6,6 +6,7 @@ const {
   AudioPlayerStatus,
   entersState,
   VoiceConnectionStatus,
+  NoSubscriberBehavior,
 } = require("@discordjs/voice");
 const { clearAudioFolders } = require("./handleClearAudio");
 const logger = require("./../../logger");
@@ -769,10 +770,19 @@ async function playNext(guildId, interaction) {
     currentTrackMap.set(guildId, songPath);
 
     const resource = createAudioResource(songPath);
-    if (!players[guildId]) players[guildId] = createAudioPlayer();
+    if (!players[guildId]) {
+      players[guildId] = createAudioPlayer({
+        behaviors: {
+          noSubscriber: NoSubscriberBehavior.Play,
+        },
+      });
+    }
 
     connections[guildId].subscribe(players[guildId]);
     players[guildId].play(resource);
+    if (players[guildId].state?.status === AudioPlayerStatus.Paused) {
+      players[guildId].unpause();
+    }
     const songName = await getSongName(songPath);
     const isPrioritySong = currentlyPlayingSource[guildId] === "priority";
     const displayName = isPrioritySong ? `⭐ ${songName}` : songName;
