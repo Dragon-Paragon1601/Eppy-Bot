@@ -4,6 +4,8 @@ const {
   createAudioPlayer,
   createAudioResource,
   AudioPlayerStatus,
+  entersState,
+  VoiceConnectionStatus,
 } = require("@discordjs/voice");
 const { clearAudioFolders } = require("./handleClearAudio");
 const logger = require("./../../logger");
@@ -690,6 +692,27 @@ async function playNext(guildId, interaction) {
       logger.error(
         `❌ Error: Bot couldn't join the voice channel on server ${guildId}`,
       );
+      return;
+    }
+
+    try {
+      await entersState(
+        connections[guildId],
+        VoiceConnectionStatus.Ready,
+        15000,
+      );
+    } catch (error) {
+      logger.error(
+        `❌ Voice connection not ready for ${guildId}: ${error?.message || error}`,
+      );
+      try {
+        connections[guildId]?.destroy();
+      } catch (destroyError) {
+        logger.debug(
+          `Voice connection destroy after readiness timeout failed for ${guildId}: ${destroyError}`,
+        );
+      }
+      delete connections[guildId];
       return;
     }
 
