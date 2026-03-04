@@ -35,6 +35,38 @@ module.exports = {
       logger.error(`[test_play][${traceId}] ${text}`);
     };
 
+    const stringifySafe = (value) => {
+      try {
+        return JSON.stringify(value);
+      } catch {
+        return String(value);
+      }
+    };
+
+    const describeVoiceState = (state) => {
+      if (!state) return "(no-state)";
+      const info = {
+        status: state.status,
+        reason: state.reason,
+        closeCode: state.closeCode,
+        subscriptionExists: !!state.subscription,
+      };
+
+      if (state.networking?.state) {
+        info.networking = {
+          code: state.networking.state.code,
+          wsStatus:
+            state.networking.state.ws?.readyState ??
+            state.networking.state.connectionData?.code ??
+            null,
+          udpKeepAliveInterval:
+            state.networking.state.udp?.keepAliveInterval ?? null,
+        };
+      }
+
+      return stringifySafe(info);
+    };
+
     const render = (title) => {
       const body = logLines.join("\n");
       const trimmed =
@@ -59,6 +91,42 @@ module.exports = {
     let connection = null;
     let player = null;
     let cleaned = false;
+
+    const waitForReadyWithRetry = async (maxAttempts = 3) => {
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          pushLine(
+            `Waiting for VoiceConnectionStatus.Ready. attempt=${attempt}/${maxAttempts}`,
+          );
+          await entersState(connection, VoiceConnectionStatus.Ready, 12_000);
+          pushLine(`READY reached on attempt ${attempt}.`);
+          return true;
+        } catch (err) {
+          pushError(
+            `READY timeout/abort on attempt ${attempt}: ${err?.message || err}`,
+          );
+          pushLine(
+            `Connection state snapshot after failed attempt: ${describeVoiceState(connection?.state)}`,
+          );
+
+          if (
+            attempt < maxAttempts &&
+            typeof connection?.rejoin === "function"
+          ) {
+            try {
+              pushLine(`Calling connection.rejoin() before next attempt.`);
+              connection.rejoin();
+            } catch (rejoinErr) {
+              pushError(
+                `connection.rejoin failed: ${rejoinErr?.message || rejoinErr}`,
+              );
+            }
+          }
+        }
+      }
+
+      return false;
+    };
 
     const cleanup = async (reason) => {
       if (cleaned) return;
@@ -105,6 +173,12 @@ module.exports = {
         `Voice target: id=${voiceChannel.id}, name=${voiceChannel.name}, bitrate=${voiceChannel.bitrate}, members=${voiceChannel.members?.size || "n/a"}`,
       );
 
+      const me = interaction.guild.members.me;
+      const perms = voiceChannel.permissionsFor(me);
+      pushLine(
+        `Bot permissions on VC: view=${perms?.has("ViewChannel")}, connect=${perms?.has("Connect")}, speak=${perms?.has("Speak")}, useVAD=${perms?.has("UseVAD")}`,
+      );
+
       const audioPath = path.resolve(__dirname, "../music/push.mp3");
       pushLine(`Audio path resolved: ${audioPath}`);
 
@@ -124,13 +198,15 @@ module.exports = {
         channelId: voiceChannel.id,
         guildId: interaction.guild.id,
         adapterCreator: interaction.guild.voiceAdapterCreator,
-        selfDeaf: false,
+        selfDeaf: true,
       });
 
       connection.on("stateChange", (oldState, newState) => {
         pushLine(
           `Voice state change: ${oldState?.status || "unknown"} -> ${newState?.status || "unknown"}`,
         );
+        pushLine(`Voice state details old=${describeVoiceState(oldState)}`);
+        pushLine(`Voice state details new=${describeVoiceState(newState)}`);
       });
 
       connection.on("error", (err) => {
@@ -139,7 +215,11 @@ module.exports = {
 
       pushLine(`Voice connection created. current=${connection.state?.status}`);
 
-      await entersState(connection, VoiceConnectionStatus.Ready, 20_000);
+      const ready = await waitForReadyWithRetry(3);
+      if (!ready) {
+        pushError("Connection never reached READY after retries.");
+        return cleanup("voice-not-ready");
+      }
       pushLine("Voice connection reached READY state.");
       await updateMessage("✅ Voice ready. Creating audio player...");
 
