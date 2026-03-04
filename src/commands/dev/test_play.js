@@ -93,6 +93,8 @@ module.exports = {
     let player = null;
     let cleaned = false;
     let rawListener = null;
+    let gotVoiceStateUpdate = false;
+    let gotVoiceServerUpdate = false;
 
     const waitForReadyWithRetry = async (maxAttempts = 3) => {
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -210,6 +212,7 @@ module.exports = {
           if (t === "VOICE_STATE_UPDATE") {
             const isBot = d.user_id === interaction.client.user.id;
             if (isBot) {
+              gotVoiceStateUpdate = true;
               pushLine(
                 `RAW VOICE_STATE_UPDATE(bot): channel_id=${d.channel_id}, session_id=${d.session_id || "n/a"}, deaf=${d.deaf}, mute=${d.mute}, self_deaf=${d.self_deaf}, self_mute=${d.self_mute}`,
               );
@@ -217,6 +220,7 @@ module.exports = {
           }
 
           if (t === "VOICE_SERVER_UPDATE") {
+            gotVoiceServerUpdate = true;
             pushLine(
               `RAW VOICE_SERVER_UPDATE: endpoint=${d.endpoint || "null"}, tokenPresent=${!!d.token}, guild_id=${d.guild_id}`,
             );
@@ -267,6 +271,22 @@ module.exports = {
 
       const ready = await waitForReadyWithRetry(3);
       if (!ready) {
+        pushLine(
+          `Voice gateway packets summary: gotVoiceStateUpdate=${gotVoiceStateUpdate}, gotVoiceServerUpdate=${gotVoiceServerUpdate}`,
+        );
+        if (gotVoiceStateUpdate && !gotVoiceServerUpdate) {
+          pushError(
+            "Diagnostic: Missing VOICE_SERVER_UPDATE from gateway (bot gets VOICE_STATE_UPDATE only). Connection cannot leave signalling.",
+          );
+        } else if (!gotVoiceStateUpdate && !gotVoiceServerUpdate) {
+          pushError(
+            "Diagnostic: Missing both VOICE_STATE_UPDATE and VOICE_SERVER_UPDATE. Likely gateway/event delivery issue.",
+          );
+        } else if (gotVoiceStateUpdate && gotVoiceServerUpdate) {
+          pushError(
+            "Diagnostic: Both VOICE_* packets received but networking still closed/signalling. Likely voice endpoint/network transport problem.",
+          );
+        }
         pushError("Connection never reached READY after retries.");
         return cleanup("voice-not-ready");
       }
