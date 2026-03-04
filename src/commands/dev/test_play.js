@@ -9,6 +9,7 @@ const {
   AudioPlayerStatus,
   VoiceConnectionStatus,
   NoSubscriberBehavior,
+  generateDependencyReport,
 } = require("@discordjs/voice");
 const logger = require("../../logger");
 
@@ -91,6 +92,7 @@ module.exports = {
     let connection = null;
     let player = null;
     let cleaned = false;
+    let rawListener = null;
 
     const waitForReadyWithRetry = async (maxAttempts = 3) => {
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -135,6 +137,16 @@ module.exports = {
       pushLine(`Cleanup start. reason=${reason}`);
 
       try {
+        if (rawListener) {
+          interaction.client.off("raw", rawListener);
+          rawListener = null;
+          pushLine("Detached raw gateway listener.");
+        }
+      } catch (err) {
+        pushError(`Failed detaching raw listener: ${err?.message || err}`);
+      }
+
+      try {
         if (player) {
           player.stop(true);
           pushLine("Player stopped.");
@@ -160,6 +172,12 @@ module.exports = {
       pushLine(
         `Context: guild=${interaction.guild?.id || "unknown"}, user=${interaction.user?.id || "unknown"}, textChannel=${interaction.channelId || "unknown"}`,
       );
+      pushLine(
+        `Client ws status=${interaction.client.ws.status}, ping=${interaction.client.ws.ping}, shardCount=${interaction.client.ws.shards?.size || "n/a"}`,
+      );
+      pushLine(
+        `Voice dependency report: ${generateDependencyReport().replace(/\n/g, " | ")}`,
+      );
 
       const member = interaction.member;
       const voiceChannel = member?.voice?.channel || null;
@@ -172,12 +190,44 @@ module.exports = {
       pushLine(
         `Voice target: id=${voiceChannel.id}, name=${voiceChannel.name}, bitrate=${voiceChannel.bitrate}, members=${voiceChannel.members?.size || "n/a"}`,
       );
+      pushLine(
+        `Voice channel metadata: type=${voiceChannel.type}, rtcRegion=${voiceChannel.rtcRegion || "auto"}, userLimit=${voiceChannel.userLimit}, full=${voiceChannel.full}`,
+      );
 
       const me = interaction.guild.members.me;
       const perms = voiceChannel.permissionsFor(me);
       pushLine(
         `Bot permissions on VC: view=${perms?.has("ViewChannel")}, connect=${perms?.has("Connect")}, speak=${perms?.has("Speak")}, useVAD=${perms?.has("UseVAD")}`,
       );
+
+      rawListener = (packet) => {
+        try {
+          const t = packet?.t;
+          const d = packet?.d;
+          if (!t || !d) return;
+          if (d.guild_id !== interaction.guild.id) return;
+
+          if (t === "VOICE_STATE_UPDATE") {
+            const isBot = d.user_id === interaction.client.user.id;
+            if (isBot) {
+              pushLine(
+                `RAW VOICE_STATE_UPDATE(bot): channel_id=${d.channel_id}, session_id=${d.session_id || "n/a"}, deaf=${d.deaf}, mute=${d.mute}, self_deaf=${d.self_deaf}, self_mute=${d.self_mute}`,
+              );
+            }
+          }
+
+          if (t === "VOICE_SERVER_UPDATE") {
+            pushLine(
+              `RAW VOICE_SERVER_UPDATE: endpoint=${d.endpoint || "null"}, tokenPresent=${!!d.token}, guild_id=${d.guild_id}`,
+            );
+          }
+        } catch (err) {
+          pushError(`RAW listener error: ${err?.message || err}`);
+        }
+      };
+
+      interaction.client.on("raw", rawListener);
+      pushLine("Attached raw gateway listener for VOICE_* packets.");
 
       const audioPath = path.resolve(__dirname, "../music/push.mp3");
       pushLine(`Audio path resolved: ${audioPath}`);
