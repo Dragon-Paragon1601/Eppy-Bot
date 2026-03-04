@@ -20,7 +20,14 @@ module.exports = {
 
       // RAM — KLUCZOWE
       max_memory_restart: "700M",
+      // PREVIOUS (rollback):
+      // node_args: [
+      //   "--max-old-space-size=512",
+      //   "--optimize_for_size",
+      //   "--gc_interval=100",
+      // ].join(" "),
       node_args: [
+        "--dns-result-order=ipv4first",
         "--max-old-space-size=512",
         "--optimize_for_size",
         "--gc_interval=100",

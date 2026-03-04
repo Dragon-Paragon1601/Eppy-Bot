@@ -1,6 +1,9 @@
-const { SlashCommandBuilder } = require("discord.js");
+const { SlashCommandBuilder, GatewayIntentBits } = require("discord.js");
 const path = require("path");
 const fs = require("fs");
+const os = require("os");
+const dns = require("dns").promises;
+const tls = require("tls");
 const {
   joinVoiceChannel,
   createAudioPlayer,
@@ -21,19 +24,27 @@ module.exports = {
   async execute(interaction) {
     const traceId = `tp-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
     const logLines = [];
+    const startedAt = Date.now();
 
     const pushLine = (text) => {
       const line = `[${new Date().toISOString()}] ${text}`;
       logLines.push(line);
-      if (logLines.length > 45) logLines.shift();
+      if (logLines.length > 220) logLines.shift();
       logger.info(`[test_play][${traceId}] ${text}`);
     };
 
     const pushError = (text) => {
       const line = `[${new Date().toISOString()}] ❌ ${text}`;
       logLines.push(line);
-      if (logLines.length > 45) logLines.shift();
+      if (logLines.length > 220) logLines.shift();
       logger.error(`[test_play][${traceId}] ${text}`);
+    };
+
+    const pushWarn = (text) => {
+      const line = `[${new Date().toISOString()}] ⚠️ ${text}`;
+      logLines.push(line);
+      if (logLines.length > 220) logLines.shift();
+      logger.warn(`[test_play][${traceId}] ${text}`);
     };
 
     const stringifySafe = (value) => {
@@ -68,6 +79,127 @@ module.exports = {
       return stringifySafe(info);
     };
 
+    const redact = (value, showStart = 6, showEnd = 4) => {
+      const str = String(value || "");
+      if (!str) return "";
+      if (str.length <= showStart + showEnd) return "*".repeat(str.length);
+      return `${str.slice(0, showStart)}...${str.slice(-showEnd)}`;
+    };
+
+    const normalizeVoiceEndpoint = (endpoint) => {
+      if (!endpoint || typeof endpoint !== "string") return null;
+      return endpoint
+        .replace(/^wss?:\/\//i, "")
+        .replace(/:\d+$/, "")
+        .trim();
+    };
+
+    const getNetworkSnapshot = () => {
+      const interfaces = os.networkInterfaces();
+      const summary = [];
+      for (const [name, addresses] of Object.entries(interfaces || {})) {
+        for (const addr of addresses || []) {
+          summary.push({
+            name,
+            family: addr.family,
+            address: addr.address,
+            internal: addr.internal,
+            cidr: addr.cidr,
+          });
+        }
+      }
+      return summary;
+    };
+
+    const testTlsConnect = (host, port = 443, timeoutMs = 5000) => {
+      return new Promise((resolve) => {
+        const started = Date.now();
+        let settled = false;
+
+        const socket = tls.connect(
+          {
+            host,
+            port,
+            servername: host,
+            rejectUnauthorized: false,
+            timeout: timeoutMs,
+          },
+          () => {
+            if (settled) return;
+            settled = true;
+            const elapsed = Date.now() - started;
+            const proto = socket.getProtocol ? socket.getProtocol() : "unknown";
+            resolve({ ok: true, elapsed, protocol: proto });
+            socket.end();
+          },
+        );
+
+        socket.on("timeout", () => {
+          if (settled) return;
+          settled = true;
+          resolve({
+            ok: false,
+            elapsed: Date.now() - started,
+            error: "timeout",
+          });
+          socket.destroy();
+        });
+
+        socket.on("error", (err) => {
+          if (settled) return;
+          settled = true;
+          resolve({
+            ok: false,
+            elapsed: Date.now() - started,
+            error: err?.message || String(err),
+            code: err?.code || null,
+          });
+        });
+      });
+    };
+
+    const runVoiceEndpointDiagnostics = async (endpoint) => {
+      const host = normalizeVoiceEndpoint(endpoint);
+      if (!host) {
+        pushWarn("Voice endpoint diagnostics skipped (empty endpoint).");
+        return;
+      }
+
+      pushLine(`Voice endpoint diagnostics start: host=${host}`);
+
+      try {
+        const lookupAll = await dns.lookup(host, { all: true });
+        pushLine(`DNS lookup(all): ${stringifySafe(lookupAll)}`);
+      } catch (err) {
+        pushError(
+          `DNS lookup(all) failed for ${host}: ${err?.code || ""} ${err?.message || err}`,
+        );
+      }
+
+      try {
+        const ipv4 = await dns.resolve4(host);
+        pushLine(`DNS resolve4: ${stringifySafe(ipv4)}`);
+      } catch (err) {
+        pushWarn(
+          `DNS resolve4 failed for ${host}: ${err?.code || ""} ${err?.message || err}`,
+        );
+      }
+
+      try {
+        const ipv6 = await dns.resolve6(host);
+        pushLine(`DNS resolve6: ${stringifySafe(ipv6)}`);
+      } catch (err) {
+        pushWarn(
+          `DNS resolve6 failed for ${host}: ${err?.code || ""} ${err?.message || err}`,
+        );
+      }
+
+      const tlsResult = await testTlsConnect(host, 443, 5000);
+      pushLine(
+        `TLS connectivity to ${host}:443 => ${stringifySafe(tlsResult)}`,
+      );
+    };
+
     const render = (title) => {
       const body = logLines.join("\n");
       const trimmed =
@@ -95,6 +227,12 @@ module.exports = {
     let rawListener = null;
     let gotVoiceStateUpdate = false;
     let gotVoiceServerUpdate = false;
+    let voiceStatePacketCount = 0;
+    let voiceServerPacketCount = 0;
+    let firstVoiceStateAt = null;
+    let firstVoiceServerAt = null;
+    let lastVoiceEndpoint = null;
+    let endpointDiagnosticsPromise = null;
 
     const waitForReadyWithRetry = async (maxAttempts = 3) => {
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -137,6 +275,7 @@ module.exports = {
       cleaned = true;
 
       pushLine(`Cleanup start. reason=${reason}`);
+      pushLine(`Elapsed total=${Date.now() - startedAt}ms`);
 
       try {
         if (rawListener) {
@@ -175,10 +314,37 @@ module.exports = {
         `Context: guild=${interaction.guild?.id || "unknown"}, user=${interaction.user?.id || "unknown"}, textChannel=${interaction.channelId || "unknown"}`,
       );
       pushLine(
+        `Runtime: node=${process.version}, platform=${process.platform}, arch=${process.arch}, pid=${process.pid}, uptimeSec=${Math.round(process.uptime())}, cwd=${process.cwd()}`,
+      );
+      pushLine(
+        `OS: hostname=${os.hostname()}, release=${os.release()}, totalMemMB=${Math.round(os.totalmem() / 1024 / 1024)}, freeMemMB=${Math.round(os.freemem() / 1024 / 1024)}, loadavg=${stringifySafe(os.loadavg())}`,
+      );
+      pushLine(`Network interfaces: ${stringifySafe(getNetworkSnapshot())}`);
+      pushLine(
         `Client ws status=${interaction.client.ws.status}, ping=${interaction.client.ws.ping}, shardCount=${interaction.client.ws.shards?.size || "n/a"}`,
+      );
+      const intentsBitfield = Number(
+        interaction.client.options?.intents?.bitfield || 0,
+      );
+      pushLine(
+        `Gateway intents bitfield=${intentsBitfield}, hasGuildVoiceStates=${!!(intentsBitfield & GatewayIntentBits.GuildVoiceStates)}`,
+      );
+      const shardId = interaction.guild?.shardId;
+      const shard =
+        typeof shardId === "number"
+          ? interaction.client.ws.shards.get(shardId)
+          : null;
+      pushLine(
+        `Shard detail: guildShardId=${shardId}, shardStatus=${shard?.status ?? "n/a"}, shardPing=${shard?.ping ?? "n/a"}`,
+      );
+      pushLine(
+        `Env snapshot: NODE_OPTIONS=${process.env.NODE_OPTIONS || "(empty)"}, DISCORD_TOKEN_present=${!!process.env.DISCORD_TOKEN}, TOKEN_present=${!!process.env.token || !!process.env.TOKEN}`,
       );
       pushLine(
         `Voice dependency report: ${generateDependencyReport().replace(/\n/g, " | ")}`,
+      );
+      pushLine(
+        `Guild snapshot: name=${interaction.guild?.name || "unknown"}, ownerId=${interaction.guild?.ownerId || "unknown"}, memberCount=${interaction.guild?.memberCount || "unknown"}, premiumTier=${interaction.guild?.premiumTier || "unknown"}, preferredLocale=${interaction.guild?.preferredLocale || "unknown"}, afkChannelId=${interaction.guild?.afkChannelId || "none"}`,
       );
 
       const member = interaction.member;
@@ -201,6 +367,10 @@ module.exports = {
       pushLine(
         `Bot permissions on VC: view=${perms?.has("ViewChannel")}, connect=${perms?.has("Connect")}, speak=${perms?.has("Speak")}, useVAD=${perms?.has("UseVAD")}`,
       );
+      const userPerms = voiceChannel.permissionsFor(interaction.user.id);
+      pushLine(
+        `User permissions on VC: view=${userPerms?.has("ViewChannel")}, connect=${userPerms?.has("Connect")}, speak=${userPerms?.has("Speak")}`,
+      );
 
       rawListener = (packet) => {
         try {
@@ -213,6 +383,8 @@ module.exports = {
             const isBot = d.user_id === interaction.client.user.id;
             if (isBot) {
               gotVoiceStateUpdate = true;
+              voiceStatePacketCount += 1;
+              if (!firstVoiceStateAt) firstVoiceStateAt = Date.now();
               pushLine(
                 `RAW VOICE_STATE_UPDATE(bot): channel_id=${d.channel_id}, session_id=${d.session_id || "n/a"}, deaf=${d.deaf}, mute=${d.mute}, self_deaf=${d.self_deaf}, self_mute=${d.self_mute}`,
               );
@@ -221,9 +393,26 @@ module.exports = {
 
           if (t === "VOICE_SERVER_UPDATE") {
             gotVoiceServerUpdate = true;
+            voiceServerPacketCount += 1;
+            if (!firstVoiceServerAt) firstVoiceServerAt = Date.now();
+            lastVoiceEndpoint = d.endpoint || null;
             pushLine(
-              `RAW VOICE_SERVER_UPDATE: endpoint=${d.endpoint || "null"}, tokenPresent=${!!d.token}, guild_id=${d.guild_id}`,
+              `RAW VOICE_SERVER_UPDATE: endpoint=${d.endpoint || "null"}, tokenPresent=${!!d.token}, tokenMasked=${redact(d.token || "")}, guild_id=${d.guild_id}`,
             );
+
+            if (!endpointDiagnosticsPromise && d.endpoint) {
+              endpointDiagnosticsPromise = runVoiceEndpointDiagnostics(
+                d.endpoint,
+              )
+                .catch((diagErr) => {
+                  pushError(
+                    `Voice endpoint diagnostics failed: ${diagErr?.message || diagErr}`,
+                  );
+                })
+                .finally(() => {
+                  endpointDiagnosticsPromise = null;
+                });
+            }
           }
         } catch (err) {
           pushError(`RAW listener error: ${err?.message || err}`);
@@ -267,12 +456,25 @@ module.exports = {
         pushError(`Voice connection error: ${err?.message || err}`);
       });
 
+      connection.on("debug", (message) => {
+        pushLine(`Voice debug: ${message}`);
+      });
+
       pushLine(`Voice connection created. current=${connection.state?.status}`);
 
       const ready = await waitForReadyWithRetry(3);
       if (!ready) {
+        if (endpointDiagnosticsPromise) {
+          pushLine(
+            "Waiting for endpoint diagnostics completion before failure summary...",
+          );
+          await endpointDiagnosticsPromise;
+        }
         pushLine(
           `Voice gateway packets summary: gotVoiceStateUpdate=${gotVoiceStateUpdate}, gotVoiceServerUpdate=${gotVoiceServerUpdate}`,
+        );
+        pushLine(
+          `Voice packets counters: voiceStatePacketCount=${voiceStatePacketCount}, voiceServerPacketCount=${voiceServerPacketCount}, firstVoiceStateAt=${firstVoiceStateAt ? new Date(firstVoiceStateAt).toISOString() : "n/a"}, firstVoiceServerAt=${firstVoiceServerAt ? new Date(firstVoiceServerAt).toISOString() : "n/a"}, lastVoiceEndpoint=${lastVoiceEndpoint || "n/a"}`,
         );
         if (gotVoiceStateUpdate && !gotVoiceServerUpdate) {
           pushError(
@@ -291,6 +493,10 @@ module.exports = {
         return cleanup("voice-not-ready");
       }
       pushLine("Voice connection reached READY state.");
+      if (endpointDiagnosticsPromise) {
+        pushLine("Waiting for endpoint diagnostics completion after READY...");
+        await endpointDiagnosticsPromise;
+      }
       await updateMessage("✅ Voice ready. Creating audio player...");
 
       player = createAudioPlayer({
