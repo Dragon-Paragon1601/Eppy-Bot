@@ -11,6 +11,7 @@
   "author": "Paragon",
   "license": "ISC",
   "dependencies": {
+    "@discordjs/opus": "^0.10.0",
     "@discordjs/rest": "^2.2.0",
     "@discordjs/voice": "^0.18.0",
     "@distube/yt-dlp": "^2.0.1",
