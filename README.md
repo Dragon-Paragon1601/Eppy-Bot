@@ -15,6 +15,7 @@ Discord bot with music playback, moderation tools, queue automation, and resilie
 ## 📚 Table of Contents
 
 - [✅ MUST DO before first run](#-must-do-before-first-run)
+- [🌐 Website](#-website-)
 - [🔐 .env configuration](#-env-configuration)
 - [🧱 Project structure](#-project-structure)
 - [💾 Database behavior (important)](#-database-behavior-important)
@@ -23,6 +24,16 @@ Discord bot with music playback, moderation tools, queue automation, and resilie
 - [🚀 Run & deploy](#-run--deploy)
 - [🛠 Troubleshooting](#-troubleshooting)
 - [💙 Support](#-support)
+
+---
+
+## 🌐 Website
+
+- Dedicated website repository: https://github.com/Dragon-Paragon1601/Eppy-Website
+- The website is fully prepared for Eppy-Bot integration.
+- It includes a dashboard and music playback control features.
+- The website requires a working database configuration to operate correctly.
+- Full website installation process is documented in the website repository README. (Not ready yet)
 
 ---
 
