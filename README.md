@@ -33,7 +33,7 @@ Discord bot with music playback, moderation tools, queue automation, and resilie
 - The website is fully prepared for Eppy-Bot integration.
 - It includes a dashboard and music playback control features.
 - The website requires a working database configuration to operate correctly.
-- Full website installation process is documented in the website repository README. (Not ready yet)
+- Full website installation documentation is coming soon in the website repository README.
 
 ---
 
