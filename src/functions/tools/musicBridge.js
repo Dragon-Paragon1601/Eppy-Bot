@@ -678,11 +678,17 @@ async function applyCommand(client, commandRow) {
     }
 
     const [rows] = await pool.query(
-      "SELECT track_path FROM music_library_tracks WHERE TRIM(LOWER(COALESCE(artist, ''))) = TRIM(LOWER(?)) ORDER BY title ASC",
-      [artistName],
+      "SELECT track_path, artist FROM music_library_tracks WHERE LOWER(COALESCE(artist, '')) LIKE LOWER(?) ORDER BY title ASC",
+      [`%${artistName}%`],
     );
 
+    const targetArtist = artistName.toLowerCase();
     const artistTrackPaths = (rows || [])
+      .filter((row) =>
+        splitArtistNames(row?.artist)
+          .map((artist) => artist.toLowerCase())
+          .includes(targetArtist),
+      )
       .map((row) => row?.track_path)
       .filter((trackPath) => typeof trackPath === "string" && trackPath.length);
 
@@ -712,19 +718,11 @@ async function applyCommand(client, commandRow) {
     );
     if (!playlistTrackPaths.length) {
       return "Playlist is empty";
-      "SELECT track_path, artist FROM music_library_tracks WHERE LOWER(COALESCE(artist, '')) LIKE LOWER(?) ORDER BY title ASC",
-      [`%${artistName}%`],
-    );
+    }
 
-    const targetArtist = artistName.toLowerCase();
-    const artistTrackPaths = (rows || [])
-      .filter((row) =>
-        splitArtistNames(row?.artist)
-          .map((artist) => artist.toLowerCase())
-          .includes(targetArtist),
-      )
-      .map((row) => row?.track_path)
-      .filter((trackPath) => typeof trackPath === "string" && trackPath.length);
+    const tracksToQueue = await applyGuildShuffleMode(
+      guildId,
+      playlistTrackPaths,
     );
 
     const queue = await music.getQueue(guildId);
