@@ -22,6 +22,7 @@ const ACTIONS = new Set([
   "set_shuffle",
   "set_loop",
   "enqueue_priority",
+  "enqueue_artist",
   "enqueue_playlist",
   "enqueue_playlists",
   "jump_to_queue_track",
@@ -357,15 +358,20 @@ async function rebuildQueueAfterShuffleDisabled(guildId) {
 
   const currentTrackPath = music.getCurrentTrackPath(guildId);
   const queueAfterCurrent = queue.slice();
+  let hadCurrentInMainQueue = false;
   if (currentTrackPath) {
     const currentIndex = findTrackIndex(queueAfterCurrent, currentTrackPath);
     if (currentIndex >= 0) {
       queueAfterCurrent.splice(currentIndex, 1);
+      hadCurrentInMainQueue = true;
     }
   }
 
   if (!queueAfterCurrent.length) {
-    await music.saveQueue(guildId, queueAfterCurrent);
+    await music.saveQueue(
+      guildId,
+      hadCurrentInMainQueue && currentTrackPath ? [currentTrackPath] : [],
+    );
     return;
   }
 
@@ -404,7 +410,11 @@ async function rebuildQueueAfterShuffleDisabled(guildId) {
     }
   }
 
-  await music.saveQueue(guildId, rebuiltQueue);
+  const nextQueue =
+    hadCurrentInMainQueue && currentTrackPath
+      ? [currentTrackPath, ...rebuiltQueue]
+      : rebuiltQueue;
+  await music.saveQueue(guildId, nextQueue);
 }
 
 async function resolvePlaylistTrackPaths(guildId, payload = {}) {
@@ -652,6 +662,40 @@ async function applyCommand(client, commandRow) {
     }
 
     return "Track added to priority queue";
+  }
+
+  if (action === "enqueue_artist") {
+    const artistName = String(payload.artist_name || "").trim();
+    if (!artistName.length) {
+      return "Artist name is required";
+    }
+
+    const [rows] = await pool.query(
+      "SELECT track_path FROM music_library_tracks WHERE TRIM(LOWER(COALESCE(artist, ''))) = TRIM(LOWER(?)) ORDER BY title ASC",
+      [artistName],
+    );
+
+    const artistTrackPaths = (rows || [])
+      .map((row) => row?.track_path)
+      .filter((trackPath) => typeof trackPath === "string" && trackPath.length);
+
+    if (!artistTrackPaths.length) {
+      return "Artist has no tracks";
+    }
+
+    const tracksToQueue = await applyGuildShuffleMode(
+      guildId,
+      artistTrackPaths,
+    );
+    const queue = await music.getQueue(guildId);
+    const nextQueue = Array.isArray(queue) ? queue.slice() : [];
+    nextQueue.push(...tracksToQueue);
+    await music.saveQueue(guildId, nextQueue);
+    music.setLoopSource(guildId, artistTrackPaths);
+
+    return music.getRandomMode(guildId)
+      ? `Queued ${tracksToQueue.length} tracks by ${artistName} (${music.getAutoMode(guildId) ? "smart shuffled" : "shuffled"})`
+      : `Queued ${tracksToQueue.length} tracks by ${artistName}`;
   }
 
   if (action === "enqueue_playlist") {
