@@ -7,6 +7,7 @@ const dns = require("dns").promises;
 const tls = require("tls");
 const {
   joinVoiceChannel,
+  getVoiceConnection,
   createAudioPlayer,
   createAudioResource,
   entersState,
@@ -256,6 +257,9 @@ module.exports = {
     let voiceChannelForJoin = null;
     let manualConfigureKickCount = 0;
     let forceVoiceEndpoint443 = false;
+    const voiceGroup = `lab-${traceId}`;
+
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
     const replaceEndpointPort = (endpoint, forcedPort) => {
       const parsed = parseVoiceEndpoint(endpoint);
@@ -348,6 +352,7 @@ module.exports = {
         guildId: interaction.guild.id,
         adapterCreator: getCurrentAdapterCreator(),
         selfDeaf: true,
+        group: voiceGroup,
       });
 
       connection.on("stateChange", (oldState, newState) => {
@@ -400,6 +405,11 @@ module.exports = {
                 status === VoiceConnectionStatus.Signalling ||
                 netCode === 6
               ) {
+                pushLine(
+                  "Retry strategy: short cooldown before recovery action (1200ms).",
+                );
+                await sleep(1200);
+
                 const parsedEndpoint = parseVoiceEndpoint(lastVoiceEndpoint);
                 if (
                   !forceVoiceEndpoint443 &&
@@ -536,6 +546,13 @@ module.exports = {
       pushLine(
         `Voice dependency report: ${generateDependencyReport().replace(/\n/g, " | ")}`,
       );
+      const existingDefault = getVoiceConnection(interaction.guild.id);
+      if (existingDefault) {
+        pushWarn(
+          `Detected existing default-group voice connection before lab start (status=${existingDefault.state?.status || "unknown"}).`,
+        );
+      }
+      pushLine(`LAB voice group for this run: ${voiceGroup}`);
       pushLine(
         `Guild snapshot: name=${interaction.guild?.name || "unknown"}, ownerId=${interaction.guild?.ownerId || "unknown"}, memberCount=${interaction.guild?.memberCount || "unknown"}, premiumTier=${interaction.guild?.premiumTier || "unknown"}, preferredLocale=${interaction.guild?.preferredLocale || "unknown"}, afkChannelId=${interaction.guild?.afkChannelId || "none"}`,
       );
