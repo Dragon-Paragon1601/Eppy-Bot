@@ -138,6 +138,13 @@ function truncateDbValue(value, maxLength, fallback = "") {
   return normalized.slice(0, maxLength);
 }
 
+function splitArtistNames(artistValue) {
+  return String(artistValue || "")
+    .split(",")
+    .map((name) => name.trim())
+    .filter(Boolean);
+}
+
 async function hasColumn(tableName, columnName) {
   const [rows] = await pool.query(
     "SELECT 1 AS has_column FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ? LIMIT 1",
@@ -705,11 +712,19 @@ async function applyCommand(client, commandRow) {
     );
     if (!playlistTrackPaths.length) {
       return "Playlist is empty";
-    }
+      "SELECT track_path, artist FROM music_library_tracks WHERE LOWER(COALESCE(artist, '')) LIKE LOWER(?) ORDER BY title ASC",
+      [`%${artistName}%`],
+    );
 
-    const tracksToQueue = await applyGuildShuffleMode(
-      guildId,
-      playlistTrackPaths,
+    const targetArtist = artistName.toLowerCase();
+    const artistTrackPaths = (rows || [])
+      .filter((row) =>
+        splitArtistNames(row?.artist)
+          .map((artist) => artist.toLowerCase())
+          .includes(targetArtist),
+      )
+      .map((row) => row?.track_path)
+      .filter((trackPath) => typeof trackPath === "string" && trackPath.length);
     );
 
     const queue = await music.getQueue(guildId);
