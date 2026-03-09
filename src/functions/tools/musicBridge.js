@@ -300,6 +300,88 @@ async function applyGuildShuffleMode(guildId, trackPaths) {
   return shuffleTrackPaths(safeTracks);
 }
 
+function buildPathCountMap(trackPaths) {
+  const map = new Map();
+  for (const trackPath of trackPaths) {
+    map.set(trackPath, (map.get(trackPath) || 0) + 1);
+  }
+  return map;
+}
+
+function consumePath(pathCountMap, trackPath) {
+  const count = pathCountMap.get(trackPath) || 0;
+  if (count <= 0) {
+    return false;
+  }
+
+  if (count === 1) {
+    pathCountMap.delete(trackPath);
+  } else {
+    pathCountMap.set(trackPath, count - 1);
+  }
+
+  return true;
+}
+
+async function rebuildQueueAfterShuffleDisabled(guildId) {
+  const queue = await music.getQueue(guildId);
+  if (!Array.isArray(queue) || queue.length <= 1) {
+    return;
+  }
+
+  const currentTrackPath = music.getCurrentTrackPath(guildId);
+  const queueAfterCurrent = queue.slice();
+  if (currentTrackPath) {
+    const currentIndex = queueAfterCurrent.findIndex(
+      (trackPath) => trackPath === currentTrackPath,
+    );
+    if (currentIndex >= 0) {
+      queueAfterCurrent.splice(currentIndex, 1);
+    }
+  }
+
+  if (!queueAfterCurrent.length) {
+    await music.saveQueue(guildId, queueAfterCurrent);
+    return;
+  }
+
+  const fallbackSource = currentTrackPath
+    ? [currentTrackPath, ...queueAfterCurrent]
+    : queue.slice();
+  const loopSource = music.getLoopSource(guildId);
+  const source =
+    Array.isArray(loopSource) && loopSource.length
+      ? loopSource
+      : fallbackSource;
+
+  const currentIndexInSource = currentTrackPath
+    ? source.findIndex((trackPath) => trackPath === currentTrackPath)
+    : -1;
+  const rotatedSource =
+    currentIndexInSource >= 0
+      ? source
+          .slice(currentIndexInSource + 1)
+          .concat(source.slice(0, currentIndexInSource + 1))
+      : source.slice();
+
+  const counts = buildPathCountMap(queueAfterCurrent);
+  const rebuiltQueue = [];
+
+  for (const trackPath of rotatedSource) {
+    if (consumePath(counts, trackPath)) {
+      rebuiltQueue.push(trackPath);
+    }
+  }
+
+  for (const [trackPath, count] of counts.entries()) {
+    for (let index = 0; index < count; index += 1) {
+      rebuiltQueue.push(trackPath);
+    }
+  }
+
+  await music.saveQueue(guildId, rebuiltQueue);
+}
+
 async function resolvePlaylistTrackPaths(guildId, payload = {}) {
   const playlistScope = String(payload.playlist_scope || "").toLowerCase();
   const numericPlaylistId = Number(payload.playlist_id);
@@ -463,6 +545,7 @@ async function applyCommand(client, commandRow) {
 
   if (action === "set_shuffle") {
     const mode = String(payload.mode || "").toLowerCase();
+    const wasShuffleEnabled = music.getRandomMode(guildId);
     if (mode === "smart") {
       music.setRandomMode(guildId, true);
       music.setAutoMode(guildId, true);
@@ -491,6 +574,11 @@ async function applyCommand(client, commandRow) {
       music.setRandomMode(guildId, false);
       music.setAutoMode(guildId, false);
       music.setRandomType(guildId, "off");
+
+      if (wasShuffleEnabled) {
+        await rebuildQueueAfterShuffleDisabled(guildId);
+      }
+
       return "Shuffle disabled";
     }
 
@@ -499,6 +587,9 @@ async function applyCommand(client, commandRow) {
     music.setAutoMode(guildId, false);
     if (!enabled) {
       music.setRandomType(guildId, "off");
+      if (wasShuffleEnabled) {
+        await rebuildQueueAfterShuffleDisabled(guildId);
+      }
     }
 
     if (enabled) {
@@ -556,6 +647,7 @@ async function applyCommand(client, commandRow) {
     const nextQueue = Array.isArray(queue) ? queue.slice() : [];
     nextQueue.push(...tracksToQueue);
     await music.saveQueue(guildId, nextQueue);
+    music.setLoopSource(guildId, playlistTrackPaths);
 
     return music.getRandomMode(guildId)
       ? `Queued ${tracksToQueue.length} tracks (${music.getAutoMode(guildId) ? "smart shuffled" : "shuffled"})`
@@ -594,6 +686,7 @@ async function applyCommand(client, commandRow) {
     const nextQueue = Array.isArray(queue) ? queue.slice() : [];
     nextQueue.push(...tracksToQueue);
     await music.saveQueue(guildId, nextQueue);
+    music.setLoopSource(guildId, combinedTrackPaths);
 
     return music.getRandomMode(guildId)
       ? `Queued ${tracksToQueue.length} tracks from selected playlists (${music.getAutoMode(guildId) ? "smart shuffled" : "shuffled"})`
