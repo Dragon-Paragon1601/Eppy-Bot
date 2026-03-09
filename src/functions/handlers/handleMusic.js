@@ -1,4 +1,3 @@
-const path = require("path");
 const {
   joinVoiceChannel,
   createAudioPlayer,
@@ -10,399 +9,126 @@ const {
 const { clearAudioFolders } = require("./handleClearAudio");
 const logger = require("./../../logger");
 const mm = require("music-metadata");
+const path = require("path");
 const fs = require("fs");
 const config = require("../../config");
 const pool = require("../../events/mysql/connect");
 const runtimeStore = require("../../database/runtimeStore");
+const { createMusicCatalogTools } = require("../tools/musicCatalog");
+const { createMusicQueueTools } = require("../tools/musicQueue");
+const { createMusicTrackInfoTools } = require("../tools/musicTrackInfo");
+const { createMusicStateTools } = require("../tools/musicState");
+const { createMusicNotificationTools } = require("../tools/musicNotification");
+const { createMusicPlaybackTools } = require("../tools/musicPlayback");
 const {
   getGuildNotificationSettings,
   isNotificationTypeEnabled,
 } = require("../tools/notificationSettings");
-const firstSongStartedMap = new Map();
-let connections = {};
-let idleTimers = {};
-let isPlaying = {};
-let players = {};
-let queues = {};
-const priorityQueues = {};
-const historyMap = {};
-// separate structure to maintain a 'previous' queue (tracks that have finished playing)
-// this is what `/queue previous` will pull from. we keep it distinct from historyMap
-// because history is also used for informational commands like `/queue next`.
-const previousQueues = {};
-// highest-priority queue used when /queue previous is invoked
-const previousPriorityQueues = {};
-const currentlyPlayingSource = {}; // 'main' or 'priority'
-const nextTrackInfo = new Map(); // guildId -> { songPath, source: 'priority'|'main' } for display in Idle
-const loopSongMap = new Map();
-const _startingSet = new Set();
-const autoModeMap = new Map();
-const randomModeMap = new Map();
-const loopQueueMap = new Map();
-const loopSourceMap = new Map();
-const playlistMap = new Map(); // guildId -> playlist name
-const autoPlaylistsMap = new Map(); // guildId -> Set(playlist names) for /queue auto source
-const randomTypeMap = new Map(); // guildId -> 'off'|'from_playlist'|'playlist'|'all'
-const progressIntervalsMap = new Map(); // guildId -> intervalId (for more reliable cleanup)
-const skipPreviousRecordMap = new Map();
-const skipQueueShiftMap = new Map();
-const currentTrackMap = new Map();
-
-// Check if the first song was started
-function checkFirstSongStarted(guildId) {
-  if (!firstSongStartedMap.has(guildId)) {
-    firstSongStartedMap.set(guildId, false);
-  }
-  return firstSongStartedMap.get(guildId);
-}
+const {
+  firstSongStartedMap,
+  connections,
+  idleTimers,
+  isPlaying,
+  players,
+  queues,
+  currentlyPlayingSource,
+  nextTrackInfo,
+  loopSongMap,
+  _startingSet,
+  autoModeMap,
+  randomModeMap,
+  loopQueueMap,
+  loopSourceMap,
+  playlistMap,
+  autoPlaylistsMap,
+  progressIntervalsMap,
+  skipPreviousRecordMap,
+  skipQueueShiftMap,
+  currentTrackMap,
+  checkFirstSongStarted,
+  setLoopSong,
+  clearLoopSong,
+  getLoopSong,
+  setAutoMode,
+  getAutoMode,
+  setRandomMode,
+  getRandomMode,
+  setLoopQueueMode,
+  getLoopQueueMode,
+  setLoopSource,
+  clearLoopSource,
+  getLoopSource,
+  addToPriorityQueue,
+  getPriorityQueue,
+  clearPriorityQueue,
+  pushHistory,
+  getHistory,
+  pushPreviousQueue,
+  popPreviousQueue,
+  getPreviousQueue,
+  clearPreviousQueue,
+  addToPreviousPriorityQueue,
+  getPreviousPriorityQueue,
+  clearPreviousPriorityQueue,
+  setRandomType,
+  getRandomType,
+  getCurrentTrackPath,
+  getCurrentSource,
+} = createMusicStateTools();
 
 // Get the queue for a guild
 async function getQueue(guildId) {
   return runtimeStore.getQueue(guildId);
 }
 
-function setLoopSong(guildId, songPath) {
-  loopSongMap.set(guildId, songPath);
-}
-
-function clearLoopSong(guildId) {
-  if (loopSongMap.has(guildId)) loopSongMap.delete(guildId);
-}
-
-function getLoopSong(guildId) {
-  return loopSongMap.get(guildId);
-}
-
-function setAutoMode(guildId, value) {
-  autoModeMap.set(guildId, !!value);
-}
-
-function getAutoMode(guildId) {
-  return !!autoModeMap.get(guildId);
-}
-
-function setRandomMode(guildId, value) {
-  randomModeMap.set(guildId, !!value);
-}
-
-function getRandomMode(guildId) {
-  return !!randomModeMap.get(guildId);
-}
-
-function setLoopQueueMode(guildId, value) {
-  loopQueueMap.set(guildId, !!value);
-}
-
-function getLoopQueueMode(guildId) {
-  return !!loopQueueMap.get(guildId);
-}
-
-function setLoopSource(guildId, arrayOfPaths) {
-  if (!Array.isArray(arrayOfPaths)) return;
-  loopSourceMap.set(guildId, arrayOfPaths.slice());
-}
-
-// Playlist selection helpers
-function setPlaylist(guildId, playlistName) {
-  if (!playlistName) return playlistMap.delete(guildId);
-  playlistMap.set(guildId, playlistName);
-}
-
-function getPlaylist(guildId) {
-  return playlistMap.get(guildId) || null;
-}
-
-function getMusicBaseDir() {
-  const configured = (config.MUSIC_DIR || "").trim();
-  if (!configured) return path.join(__dirname, "../../commands/music/music");
-  return path.isAbsolute(configured)
-    ? configured
-    : path.resolve(process.cwd(), configured);
-}
-
-function listPlaylists() {
-  try {
-    const musicDir = getMusicBaseDir();
-    if (!fs.existsSync(musicDir)) return [];
-    return fs
-      .readdirSync(musicDir)
-      .filter((f) => fs.statSync(path.join(musicDir, f)).isDirectory());
-  } catch (err) {
-    logger.error(`listPlaylists error: ${err}`);
-    return [];
-  }
-}
-
-function listPlaylistTracks(playlistName) {
-  try {
-    const musicDir = getMusicBaseDir();
-    const dir = playlistName ? path.join(musicDir, playlistName) : musicDir;
-    if (!fs.existsSync(dir)) return [];
-    return fs
-      .readdirSync(dir)
-      .filter((f) => f.toLowerCase().endsWith(".mp3"))
-      .map((f) => path.join(dir, f));
-  } catch (err) {
-    logger.error(`listPlaylistTracks error: ${err}`);
-    return [];
-  }
-}
-
-function getAutoPlaylists(guildId) {
-  const selected = autoPlaylistsMap.get(guildId);
-  if (!selected) return [];
-  return Array.from(selected);
-}
-
-function toggleAutoPlaylist(guildId, playlistName) {
-  const available = listPlaylists();
-  const normalized = (playlistName || "").trim().toLowerCase();
-  const matched = available.find((p) => p.toLowerCase() === normalized);
-  if (!matched) return { ok: false, exists: false, added: false };
-
-  let selected = autoPlaylistsMap.get(guildId);
-  if (!selected) {
-    selected = new Set();
-    autoPlaylistsMap.set(guildId, selected);
-  }
-
-  if (selected.has(matched)) {
-    selected.delete(matched);
-    if (selected.size === 0) autoPlaylistsMap.delete(guildId);
-    return { ok: true, exists: true, added: false, playlist: matched };
-  }
-
-  selected.add(matched);
-  return { ok: true, exists: true, added: true, playlist: matched };
-}
-
-function clearAutoPlaylists(guildId) {
-  autoPlaylistsMap.delete(guildId);
-}
-
-function selectAllAutoPlaylists(guildId) {
-  const available = listPlaylists();
-  if (!available.length) {
-    autoPlaylistsMap.delete(guildId);
-    return [];
-  }
-
-  autoPlaylistsMap.set(guildId, new Set(available));
-  return available;
-}
-
-function getAutoQueueTracks(guildId) {
-  const musicDir = getMusicBaseDir();
-  let tracks = [];
-  const selected = getAutoPlaylists(guildId);
-
-  if (!fs.existsSync(musicDir)) return [];
-
-  if (!selected.length) {
-    tracks = tracks.concat(
-      fs
-        .readdirSync(musicDir)
-        .filter((f) => f.toLowerCase().endsWith(".mp3"))
-        .map((f) => path.join(musicDir, f)),
-    );
-
-    const items = fs.readdirSync(musicDir);
-    for (const item of items) {
-      const full = path.join(musicDir, item);
-      if (fs.existsSync(full) && fs.statSync(full).isDirectory()) {
-        tracks = tracks.concat(
-          fs
-            .readdirSync(full)
-            .filter((f) => f.toLowerCase().endsWith(".mp3"))
-            .map((f) => path.join(full, f)),
-        );
-      }
-    }
-
-    return tracks;
-  }
-
-  for (const playlist of selected) {
-    tracks = tracks.concat(listPlaylistTracks(playlist));
-  }
-
-  return tracks;
-}
-
-function toTrackKey(songPath) {
-  if (!songPath || typeof songPath !== "string") return null;
-
-  try {
-    const musicBaseDir = getMusicBaseDir();
-    const relative = path.relative(musicBaseDir, songPath);
-    const normalized = (relative || songPath).split(path.sep).join("/");
-    return normalized.toLowerCase();
-  } catch (err) {
-    logger.debug(`toTrackKey fallback for ${songPath}: ${err}`);
-    return songPath.split(path.sep).join("/").toLowerCase();
-  }
-}
-
-function getRecentTrackKeys(guildId, limit = 15) {
-  const history = getHistory(guildId);
-  if (!history || history.length === 0) return new Set();
-
-  const recent = history.slice(-limit).map((songPath) => toTrackKey(songPath));
-  return new Set(recent.filter(Boolean));
-}
-
-async function recordTrackPlayForSmartShuffle(guildId, songPath) {
-  if (!guildId || !songPath) return;
-  if (!getAutoMode(guildId) || !getRandomMode(guildId)) return;
-
-  const trackKey = toTrackKey(songPath);
-  if (!trackKey) return;
-
-  try {
-    await runtimeStore.incrementMusicPlay(guildId, trackKey);
-  } catch (err) {
-    logger.error(`recordTrackPlayForSmartShuffle error for ${guildId}: ${err}`);
-  }
-}
-
-async function smartShuffleTracks(guildId, tracks) {
-  if (!Array.isArray(tracks) || tracks.length <= 1) return tracks || [];
-
-  const trackKeys = tracks.map((songPath) => toTrackKey(songPath));
-  const uniqueKeys = Array.from(new Set(trackKeys.filter(Boolean)));
-
-  let stats = [];
-  if (uniqueKeys.length > 0) {
-    try {
-      stats = await runtimeStore.findMusicStatsByTrackKeys(guildId, uniqueKeys);
-    } catch (err) {
-      logger.error(
-        `smartShuffleTracks stats fetch error for ${guildId}: ${err}`,
-      );
-    }
-  }
-
-  const playCountByTrack = new Map();
-  for (const stat of stats) {
-    playCountByTrack.set(stat.trackKey, stat.playCount || 0);
-  }
-
-  let maxCount = 0;
-  for (const key of trackKeys) {
-    const count = playCountByTrack.get(key) || 0;
-    if (count > maxCount) maxCount = count;
-  }
-
-  const recentTrackKeys = getRecentTrackKeys(guildId, 15);
-  const scored = tracks.map((songPath, index) => {
-    const key = trackKeys[index];
-    const count = playCountByTrack.get(key) || 0;
-    const normalizedCount = maxCount > 0 ? count / maxCount : 0;
-    const recencyPenalty = recentTrackKeys.has(key) ? 1 : 0;
-    const randomNoise = Math.random() * 0.5;
-    const score = normalizedCount * 0.85 + recencyPenalty * 1.25 + randomNoise;
-
-    return { songPath, score };
-  });
-
-  scored.sort((a, b) => a.score - b.score);
-  return scored.map((item) => item.songPath);
-}
-
-// Random mode type helpers
-function setRandomType(guildId, type) {
-  const allowed = ["off", "from_playlist", "playlist", "all"];
-  if (!allowed.includes(type)) return;
-  randomTypeMap.set(guildId, type);
-}
-
-function getRandomType(guildId) {
-  return randomTypeMap.get(guildId) || "off";
-}
-
-function clearLoopSource(guildId) {
-  loopSourceMap.delete(guildId);
-}
-
-function getLoopSource(guildId) {
-  return loopSourceMap.get(guildId);
-}
-
-function getCurrentTrackPath(guildId) {
-  return currentTrackMap.get(guildId) || null;
-}
-
-function getCurrentSource(guildId) {
-  return currentlyPlayingSource[guildId] || null;
-}
+const {
+  getMusicBaseDir,
+  listPlaylists,
+  listPlaylistTracks,
+  setPlaylist,
+  getPlaylist,
+  getAutoPlaylists,
+  toggleAutoPlaylist,
+  clearAutoPlaylists,
+  selectAllAutoPlaylists,
+  getAutoQueueTracks,
+  recordTrackPlayForSmartShuffle,
+  smartShuffleTracks,
+} = createMusicCatalogTools({
+  config,
+  logger,
+  runtimeStore,
+  getHistory,
+  getAutoMode,
+  getRandomMode,
+  playlistMap,
+  autoPlaylistsMap,
+  path,
+  fs,
+});
 
 // Save the queue for a guild
 async function saveQueue(guildId, queue) {
   await runtimeStore.saveQueue(guildId, queue);
 }
 
-// Priority queue: songs that should be played next (not persisted)
-function addToPriorityQueue(guildId, songPath) {
-  if (!priorityQueues[guildId]) priorityQueues[guildId] = [];
-  // add to end (FIFO)
-  priorityQueues[guildId].push(songPath);
-}
+const { addToQueue, addToQueueNext, clearQueue, shuffleQueue } =
+  createMusicQueueTools({
+    getQueue,
+    saveQueue,
+    clearPreviousQueue,
+    clearPreviousPriorityQueue,
+  });
 
-function getPriorityQueue(guildId) {
-  return priorityQueues[guildId] || [];
-}
+const { formatTime, createProgressBar, getSongDuration, getSongName } =
+  createMusicTrackInfoTools({ logger, mm, path });
 
-function clearPriorityQueue(guildId) {
-  if (priorityQueues[guildId]) priorityQueues[guildId] = [];
-}
-
-function pushHistory(guildId, songPath) {
-  if (!historyMap[guildId]) historyMap[guildId] = [];
-  historyMap[guildId].push(songPath);
-  // limit history to 200
-  if (historyMap[guildId].length > 200) historyMap[guildId].shift();
-}
-
-function getHistory(guildId) {
-  return historyMap[guildId] || [];
-}
-
-// previous-queue helpers --------------------------------------------------
-function pushPreviousQueue(guildId, songPath) {
-  if (!previousQueues[guildId]) previousQueues[guildId] = [];
-  previousQueues[guildId].push(songPath);
-  // keep it reasonably bounded
-  if (previousQueues[guildId].length > 200) previousQueues[guildId].shift();
-}
-
-function popPreviousQueue(guildId) {
-  const q = previousQueues[guildId] || [];
-  return q.length > 0 ? q.pop() : null;
-}
-
-function getPreviousQueue(guildId) {
-  return previousQueues[guildId] || [];
-}
-
-function clearPreviousQueue(guildId) {
-  previousQueues[guildId] = [];
-}
-
-// previous priority queue helpers -----------------------------------------
-function addToPreviousPriorityQueue(guildId, songPath) {
-  if (!previousPriorityQueues[guildId]) previousPriorityQueues[guildId] = [];
-  previousPriorityQueues[guildId].push(songPath);
-  if (previousPriorityQueues[guildId].length > 200)
-    previousPriorityQueues[guildId].shift();
-}
-
-function getPreviousPriorityQueue(guildId) {
-  return previousPriorityQueues[guildId] || [];
-}
-
-function clearPreviousPriorityQueue(guildId) {
-  previousPriorityQueues[guildId] = [];
-}
+const { getQueueChannel, sendNotification } = createMusicNotificationTools({
+  pool,
+  logger,
+  getGuildNotificationSettings,
+  isNotificationTypeEnabled,
+});
 
 // Play previous track from history
 async function playPrevious(guildId, interaction) {
@@ -481,41 +207,6 @@ function resume(guildId) {
   return false;
 }
 
-// Add a song to the queue
-async function addToQueue(guildId, songPath) {
-  let queue = await getQueue(guildId);
-  queue.push(songPath);
-  await saveQueue(guildId, queue);
-}
-// Add a song to position 2 (index 1) in the queue
-async function addToQueueNext(guildId, songPath) {
-  let queue = await getQueue(guildId);
-  queue.splice(1, 0, songPath);
-  await saveQueue(guildId, queue);
-}
-// Clear the queue for a guild
-async function clearQueue(guildId) {
-  await saveQueue(guildId, []);
-  // when the main queue is wiped we should also forget any "previous" history
-  clearPreviousQueue(guildId);
-  clearPreviousPriorityQueue(guildId);
-}
-
-// Shuffle the queue for a guild
-async function shuffleQueue(guildId, shuffleTimes = 10) {
-  let queue = await getQueue(guildId);
-  if (!queue || queue.length < 3) return;
-
-  for (let n = 0; n < shuffleTimes; n++) {
-    for (let i = queue.length - 1; i > 1; i--) {
-      const j = Math.floor(Math.random() * (i - 1)) + 1;
-      [queue[i], queue[j]] = [queue[j], queue[i]];
-    }
-  }
-
-  await saveQueue(guildId, queue);
-}
-
 // Check if music is currently playing
 function isPlay(guildId) {
   return !!isPlaying[guildId];
@@ -527,561 +218,47 @@ function playersStop(guildId) {
   players[guildId].play(emptyResource);
 }
 
-// Check if the queue is empty
-async function queueEmpty(guildId, interaction) {
-  let emptyCheck = await getQueue(guildId);
-  if (emptyCheck.length === 0) {
-    logger.debug(`🚫 Queue for guild ${guildId} is empty.`);
-    // If loop mode for whole queue is enabled and we have a stored source, refill the queue
-    if (
-      loopQueueMap.get(guildId) &&
-      Array.isArray(loopSourceMap.get(guildId)) &&
-      loopSourceMap.get(guildId).length > 0
-    ) {
-      const source = loopSourceMap.get(guildId);
-      const useSmartShuffle = getAutoMode(guildId) && getRandomMode(guildId);
-      const refilledQueue = useSmartShuffle
-        ? await smartShuffleTracks(guildId, source)
-        : [...source];
-
-      await saveQueue(guildId, refilledQueue);
-      logger.debug(
-        `🔁 Looping queue for guild ${guildId}. Refilled ${source.length} tracks${useSmartShuffle ? " (smart shuffle)" : ""}.`,
-      );
-      try {
-        await playNext(guildId, interaction);
-      } catch (err) {
-        logger.error(`Error in queueEmpty playNext call: ${err}`);
-      }
-      return;
-    }
-    if (interaction.channel) {
-      interaction.channel.send("⌛ Queue is empty. Waiting for another song!");
-    }
-    clearAudioFolders(guildId);
-    await saveQueue(guildId, []);
-
-    idleTimers[guildId] = setTimeout(() => {
-      if (!queues[guildId]?.length && connections[guildId]) {
-        connections[guildId].destroy();
-        delete connections[guildId];
-        logger.debug(`⏹️ Bot disconnected from ${guildId} due to no music.`);
-      }
-    }, 180000);
-    return;
-  }
-}
-
-// Sformatuj czas w milisekundach na minuty i sekundy
-function formatTime(ms) {
-  const minutes = Math.floor(ms / 60000);
-  const seconds = Math.floor((ms % 60000) / 1000);
-  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
-}
-
-// Create a progress bar for the currently playing song
-function createProgressBar(currentTime, totalTime, barLength = 23) {
-  if (isNaN(currentTime) || isNaN(totalTime) || totalTime === 0)
-    return "[─────────────────]";
-  let progress = Math.round((currentTime / totalTime) * barLength);
-  progress = Math.max(0, Math.min(progress, barLength));
-  return "█".repeat(progress) + "─".repeat(barLength - progress);
-}
-
-// Get song duration from metadata
-async function getSongDuration(songPath) {
-  try {
-    const metadata = await mm.parseFile(songPath);
-    return metadata.format.duration * 1000;
-  } catch (err) {
-    logger.error(`Error fetching metadata for ${songPath}: ${err}`);
-    return 0;
-  }
-}
-
-// Truncate string to max length, appending ellipsis if needed
-function truncate(str, maxLen) {
-  if (!str || typeof str !== "string") return str;
-  if (str.length <= maxLen) return str;
-  return str.slice(0, maxLen - 3) + "...";
-}
-
-// Get song name from metadata (artist/title) or fallback to filename
-async function getSongName(songPath) {
-  try {
-    const metadata = await mm.parseFile(songPath);
-    let artist = metadata.common?.artist;
-    let title = metadata.common?.title;
-
-    if (artist && title) {
-      // limit artist length for display
-      artist = truncate(artist, 20);
-      title = truncate(title, 40); // also protect title if very long
-      return `${title} - ${artist}`;
-    }
-  } catch (err) {
-    logger.debug(`Unable to fetch metadata for ${songPath}: ${err}`);
-  }
-
-  // Fallback to filename if metadata unavailable
-  return path.basename(songPath, ".mp3").replace(/_/g, " ");
-}
-
-// Play the next song in the queue
-async function playNext(guildId, interaction) {
-  // Aggressive cleanup of old progress interval first
-  if (progressIntervalsMap.has(guildId)) {
-    const oldInterval = progressIntervalsMap.get(guildId);
-    clearInterval(oldInterval);
-    progressIntervalsMap.delete(guildId);
-  }
-  // Also clean up from idleTimers to be safe
-  if (idleTimers[guildId]) {
-    if (typeof idleTimers[guildId].progressInterval === "number") {
-      clearInterval(idleTimers[guildId].progressInterval);
-    } else if (idleTimers[guildId].progressInterval) {
-      clearInterval(idleTimers[guildId].progressInterval);
-    }
-    idleTimers[guildId].progressInterval = null;
-  }
-
-  if (isPlaying[guildId]) {
-    return;
-  }
-  if (_startingSet.has(guildId)) return; // prevent concurrent starts
-  _startingSet.add(guildId);
-
-  try {
-    let queue = await getQueue(guildId);
-
-    await queueEmpty(guildId, interaction);
-
-    // In case queueEmpty refilled the queue (e.g., looped playlist), re-fetch it so
-    // the rest of this function sees the newly saved tracks.
-    queue = await getQueue(guildId);
-
-    const voiceChannel = interaction.member.voice.channel;
-    if (!voiceChannel) {
-      logger.debug(`🚫 User left voice channel. Bot disconnecting.`);
-      connections[guildId]?.destroy();
-      delete connections[guildId];
-      return;
-    }
-
-    if (
-      !connections[guildId] ||
-      connections[guildId].joinConfig.channelId !== voiceChannel.id
-    ) {
-      if (connections[guildId]) {
-        connections[guildId].destroy();
-      }
-
-      connections[guildId] = joinVoiceChannel({
-        channelId: voiceChannel.id,
-        guildId: guildId,
-        adapterCreator: interaction.guild.voiceAdapterCreator,
-        selfDeaf: true,
-      });
-
-      logger.debug(
-        `✅ Bot joined voice channel: ${voiceChannel.id} on server ${guildId}`,
-      );
-    }
-
-    if (!connections[guildId]) {
-      logger.error(
-        `❌ Error: Bot couldn't join the voice channel on server ${guildId}`,
-      );
-      return;
-    }
-
-    let isConnectionReady = false;
-    try {
-      await entersState(
-        connections[guildId],
-        VoiceConnectionStatus.Ready,
-        8000,
-      );
-      isConnectionReady = true;
-    } catch (firstError) {
-      logger.warn(
-        `Voice connection not ready on first attempt for ${guildId}: ${firstError?.message || firstError}`,
-      );
-
-      try {
-        if (typeof connections[guildId]?.rejoin === "function") {
-          connections[guildId].rejoin();
-        }
-        await entersState(
-          connections[guildId],
-          VoiceConnectionStatus.Ready,
-          6000,
-        );
-        isConnectionReady = true;
-      } catch (secondError) {
-        logger.warn(
-          `Voice connection still not ready after rejoin for ${guildId}: ${secondError?.message || secondError}. Continuing with playback attempt.`,
-        );
-      }
-    }
-
-    logger.debug(
-      `Voice readiness for ${guildId}: ready=${isConnectionReady}, status=${connections[guildId]?.state?.status || "unknown"}`,
-    );
-
-    // choose next song: previous-priority queue > priority queue > main queue
-    let songPath;
-    const ppQueue = getPreviousPriorityQueue(guildId);
-    const pQueue = getPriorityQueue(guildId);
-    if (ppQueue && ppQueue.length > 0) {
-      songPath = ppQueue.shift();
-      currentlyPlayingSource[guildId] = "previous_priority";
-    } else if (pQueue && pQueue.length > 0) {
-      songPath = pQueue.shift();
-      currentlyPlayingSource[guildId] = "priority";
-    } else {
-      songPath = queue[0];
-      currentlyPlayingSource[guildId] = "main";
-    }
-    if (!songPath) {
-      logger.error(`🚫 Error: No valid track to play for ${guildId}`);
-      return;
-    }
-
-    // Cache next track info for display purposes
-    const nextPPQueue = getPreviousPriorityQueue(guildId);
-    const nextPQueue = getPriorityQueue(guildId);
-    const nextQueue = await getQueue(guildId);
-    let nextTrackData = null;
-
-    // Account for the fact that currently playing song is still in the queue
-    if (currentlyPlayingSource[guildId] === "previous_priority") {
-      // Playing from previous-priority queue, next is remaining prev-priority,
-      // then priority, then main queue
-      if (nextPPQueue && nextPPQueue.length > 0) {
-        nextTrackData = { songPath: nextPPQueue[0], source: "previous" };
-      } else if (nextPQueue && nextPQueue.length > 0) {
-        nextTrackData = { songPath: nextPQueue[0], source: "priority" };
-      } else if (nextQueue && nextQueue.length > 0) {
-        nextTrackData = { songPath: nextQueue[0], source: "main" };
-      }
-    } else if (currentlyPlayingSource[guildId] === "priority") {
-      // Playing from priority queue, next is remaining prev-priority,
-      // then remaining priority, or main queue
-      if (nextPPQueue && nextPPQueue.length > 0) {
-        nextTrackData = { songPath: nextPPQueue[0], source: "previous" };
-      } else if (nextPQueue && nextPQueue.length > 0) {
-        nextTrackData = { songPath: nextPQueue[0], source: "priority" };
-      } else if (nextQueue && nextQueue.length > 0) {
-        nextTrackData = { songPath: nextQueue[0], source: "main" };
-      }
-    } else if (currentlyPlayingSource[guildId] === "main") {
-      // Playing from main queue, current song is at [0], so next is at [1]
-      if (nextPPQueue && nextPPQueue.length > 0) {
-        nextTrackData = { songPath: nextPPQueue[0], source: "previous" };
-      } else if (nextPQueue && nextPQueue.length > 0) {
-        nextTrackData = { songPath: nextPQueue[0], source: "priority" };
-      } else if (nextQueue && nextQueue.length > 1) {
-        nextTrackData = { songPath: nextQueue[1], source: "main" };
-      }
-    }
-    nextTrackInfo.set(guildId, nextTrackData);
-
-    const resource = createAudioResource(songPath);
-    if (
-      !players[guildId] ||
-      players[guildId].state?.status === AudioPlayerStatus.Idle
-    ) {
-      players[guildId] = createAudioPlayer();
-    }
-
-    const subscription = connections[guildId].subscribe(players[guildId]);
-    if (!subscription) {
-      logger.error(
-        `❌ Failed to subscribe player to voice connection for ${guildId}`,
-      );
-      return;
-    }
-
-    logger.debug(
-      `Voice subscription created for ${guildId}. connectionStatus=${connections[guildId]?.state?.status || "unknown"}`,
-    );
-
-    players[guildId].play(resource);
-    if (players[guildId].state?.status === AudioPlayerStatus.Paused) {
-      players[guildId].unpause();
-    }
-
-    logger.debug(
-      `Player state after play for ${guildId}: ${players[guildId].state?.status || "unknown"}`,
-    );
-
-    isPlaying[guildId] = true;
-    currentTrackMap.set(guildId, songPath);
-
-    const songName = await getSongName(songPath);
-    const isPrioritySong = currentlyPlayingSource[guildId] === "priority";
-    const displayName = isPrioritySong ? `⭐ ${songName}` : songName;
-
-    logger.info(
-      `🎵 Now playing for ${guildId}: ${songName} (priority: ${isPrioritySong})`,
-    );
-    // record played song in history (for back navigation)
-    pushHistory(guildId, songPath);
-
-    // Run getSongDuration in parallel with the initial notification; we'll edit the
-    // notification once we know the total time so the displayed length isn't a
-    // countdown but a static value.
-    const [sentMessage, totalTime] = await Promise.all([
-      sendNotification(guildId, interaction, `🎶 Now playing: **${songName}**`),
-      getSongDuration(songPath),
-    ]);
-
-    // if we have a sent message, append the formatted total length
-    if (sentMessage && typeof sentMessage.edit === "function") {
-      try {
-        sentMessage.edit(
-          `🎶 Now playing: **${displayName}** [${formatTime(totalTime)}]`,
-        );
-      } catch (e) {
-        logger.error(`Failed editing initial notification for duration: ${e}`);
-      }
-    }
-
-    if (!idleTimers[guildId]) idleTimers[guildId] = {};
-
-    if (idleTimers[guildId]?.progressInterval) {
-      clearInterval(idleTimers[guildId].progressInterval);
-    }
-
-    if (sentMessage && typeof sentMessage.edit === "function") {
-      // let lastEditedSecond = -1; // commented timer tracking
-      let lastProgressSegment = -1;
-
-      const progressInterval = setInterval(() => {
-        if (players[guildId].state.status === AudioPlayerStatus.Playing) {
-          const currentTime = players[guildId].state.resource.playbackDuration;
-          // const currentSecond = Math.floor(currentTime / 1000); // no numeric display
-          const currentProgress = Math.round((currentTime / totalTime) * 23);
-
-          let shouldUpdate = false;
-          // let updateReason = "";
-
-          // only update on progress bar change
-          if (currentProgress !== lastProgressSegment) {
-            lastProgressSegment = currentProgress;
-            shouldUpdate = true;
-            // updateReason += "progress";
-          }
-
-          if (shouldUpdate) {
-            try {
-              sentMessage.edit(
-                `🎶 **${displayName}** (${formatTime(totalTime)})\n[${createProgressBar(currentTime, totalTime)}]`,
-              );
-            } catch (e) {
-              logger.error(`Failed editing progress message: ${e}`);
-            }
-          }
-        }
-      }, 100);
-
-      // Store interval in both places for redundancy
-      idleTimers[guildId].progressInterval = progressInterval;
-      progressIntervalsMap.set(guildId, progressInterval);
-
-      // Immediately update message with initial progress bar (no timers)
-      try {
-        sentMessage.edit(
-          `🎶 **${songName}** (${formatTime(totalTime)})\n[${createProgressBar(0, totalTime)}]`,
-        );
-      } catch (e) {
-        logger.debug(`Initial progress bar edit failed: ${e}`);
-      }
-
-      players[guildId].once(AudioPlayerStatus.Idle, async () => {
-        // Clean up progress interval BEFORE anything else
-        if (progressIntervalsMap.has(guildId)) {
-          clearInterval(progressIntervalsMap.get(guildId));
-          progressIntervalsMap.delete(guildId);
-        }
-        if (idleTimers[guildId]?.progressInterval) {
-          clearInterval(idleTimers[guildId].progressInterval);
-          idleTimers[guildId].progressInterval = null;
-        }
-        try {
-          // Get next track info that was cached by playNext()
-          const cachedNextTrack = nextTrackInfo.get(guildId);
-          let nextSongName = null;
-          let nextSource = null;
-
-          if (cachedNextTrack) {
-            nextSongName = await getSongName(cachedNextTrack.songPath);
-            nextSource = cachedNextTrack.source;
-          }
-
-          // only state that the track finished, no longer mention next track
-          const finishedMsg = `🎶 Finished playing: **${isPrioritySong ? "⭐ " : ""}${songName}**`;
-
-          sentMessage.edit(finishedMsg);
-        } catch (e) {
-          logger.error(`Failed editing finished message: ${e}`);
-        }
-        // record the finished track in the previous queue (used by /queue previous)
-        if (skipPreviousRecordMap.get(guildId)) {
-          skipPreviousRecordMap.delete(guildId);
-        } else {
-          pushPreviousQueue(guildId, songPath);
-        }
-
-        await recordTrackPlayForSmartShuffle(guildId, songPath);
-
-        isPlaying[guildId] = false;
-        firstSongStartedMap.set(guildId, false);
-        queue = await getQueue(guildId);
-        const loopSong = loopSongMap.get(guildId);
-        if (skipQueueShiftMap.get(guildId)) {
-          skipQueueShiftMap.delete(guildId);
-        } else if (currentlyPlayingSource[guildId] === "main") {
-          // if the song was from main queue and not looped single-song, shift it
-          if (!loopSong || loopSong !== songPath) {
-            if (queue.length > 0) {
-              queue.shift();
-              await saveQueue(guildId, queue);
-            }
-          }
-        }
-        // clear currentlyPlayingSource for guild
-        delete currentlyPlayingSource[guildId];
-        currentTrackMap.delete(guildId);
-        // clear next track cache
-        nextTrackInfo.delete(guildId);
-        // release starting lock (allow future playNext calls)
-        _startingSet.delete(guildId);
-        try {
-          await playNext(guildId, interaction);
-        } catch (err) {
-          logger.error(`Error in Idle listener playNext call: ${err}`);
-        }
-      });
-    } else {
-      // No editable message available; fall back to minimal idle handling
-      players[guildId].once(AudioPlayerStatus.Idle, async () => {
-        if (progressIntervalsMap.has(guildId)) {
-          clearInterval(progressIntervalsMap.get(guildId));
-          progressIntervalsMap.delete(guildId);
-        }
-        if (idleTimers[guildId]?.progressInterval) {
-          clearInterval(idleTimers[guildId].progressInterval);
-          idleTimers[guildId].progressInterval = null;
-        }
-        // finished track should go to previous queue unless explicitly skipped
-        if (skipPreviousRecordMap.get(guildId)) {
-          skipPreviousRecordMap.delete(guildId);
-        } else {
-          pushPreviousQueue(guildId, songPath);
-        }
-
-        await recordTrackPlayForSmartShuffle(guildId, songPath);
-
-        isPlaying[guildId] = false;
-        firstSongStartedMap.set(guildId, false);
-        queue = await getQueue(guildId);
-        const loopSong = loopSongMap.get(guildId);
-        if (skipQueueShiftMap.get(guildId)) {
-          skipQueueShiftMap.delete(guildId);
-        } else if (currentlyPlayingSource[guildId] === "main") {
-          if (!loopSong || loopSong !== songPath) {
-            if (queue.length > 0) {
-              queue.shift();
-              await saveQueue(guildId, queue);
-            }
-          }
-        }
-        delete currentlyPlayingSource[guildId];
-        currentTrackMap.delete(guildId);
-        // ensure we don't start concurrently
-        if (!_startingSet.has(guildId)) {
-          try {
-            await playNext(guildId, interaction);
-          } catch (err) {
-            logger.error(
-              `Error in fallback Idle listener playNext call: ${err}`,
-            );
-          }
-        }
-      });
-    }
-
-    if (idleTimers[guildId]) clearTimeout(idleTimers[guildId]);
-  } finally {
-    // release starting lock if it somehow was left set and playback didn't start
-    if (!isPlaying[guildId]) _startingSet.delete(guildId);
-  }
-}
-
-// Get the queue channel for a guild
-async function getQueueChannel(guildId) {
-  try {
-    const [results] = await pool.query(
-      "SELECT queue_channel_id FROM queue_channels WHERE guild_id = ?",
-      [guildId],
-    );
-    return results.length > 0 ? results[0].queue_channel_id : null;
-  } catch (err) {
-    logger.error(`Error fetching queue channel for ${guildId}: ${err}`);
-    return null;
-  }
-}
-
-// Send notification to configured channel if present, otherwise fall back to interaction.channel
-async function sendNotification(guildId, interaction, content, options = {}) {
-  try {
-    const notificationSettings = await getGuildNotificationSettings(guildId, {
-      ensureRow: true,
-    });
-
-    if (
-      !isNotificationTypeEnabled(
-        notificationSettings,
-        "queue_notifications_enabled",
-      )
-    ) {
-      return null;
-    }
-
-    const channelId = await getQueueChannel(guildId);
-    if (channelId) {
-      try {
-        const ch = await interaction.guild.channels.fetch(channelId);
-        if (ch && ch.send) {
-          return ch.send({ content, ...options });
-        }
-      } catch (e) {
-        logger.error(`Failed to send to configured channel ${channelId}: ${e}`);
-      }
-    }
-
-    // fallback to the channel where command was issued
-    if (interaction.channel && interaction.channel.send) {
-      return interaction.channel.send({ content, ...options });
-    }
-  } catch (err) {
-    logger.error(`sendNotification error for ${guildId}: ${err}`);
-  }
-  return null;
-}
-
-// Start playing music
-function startPlaying(interaction) {
-  const guildId = interaction.guild.id;
-  if (
-    !players[guildId] ||
-    players[guildId].state.status !== AudioPlayerStatus.Playing
-  ) {
-    playNext(guildId, interaction);
-  }
-}
+const { playNext, startPlaying } = createMusicPlaybackTools({
+  logger,
+  clearAudioFolders,
+  joinVoiceChannel,
+  createAudioPlayer,
+  createAudioResource,
+  AudioPlayerStatus,
+  entersState,
+  VoiceConnectionStatus,
+  getQueue,
+  saveQueue,
+  smartShuffleTracks,
+  getAutoMode,
+  getRandomMode,
+  getPreviousPriorityQueue,
+  getPriorityQueue,
+  getSongName,
+  sendNotification,
+  getSongDuration,
+  formatTime,
+  createProgressBar,
+  pushHistory,
+  pushPreviousQueue,
+  recordTrackPlayForSmartShuffle,
+  firstSongStartedMap,
+  connections,
+  idleTimers,
+  isPlaying,
+  players,
+  queues,
+  currentlyPlayingSource,
+  nextTrackInfo,
+  loopSongMap,
+  _startingSet,
+  loopQueueMap,
+  loopSourceMap,
+  progressIntervalsMap,
+  skipPreviousRecordMap,
+  skipQueueShiftMap,
+  currentTrackMap,
+});
 
 // Stop playback and clean up timers/listeners to avoid duplicate playNext calls
 function stopAndCleanup(guildId) {
