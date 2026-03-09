@@ -323,6 +323,32 @@ function consumePath(pathCountMap, trackPath) {
   return true;
 }
 
+function findTrackIndex(trackPaths, targetTrackPath) {
+  if (!Array.isArray(trackPaths) || !trackPaths.length || !targetTrackPath) {
+    return -1;
+  }
+
+  const targetKey = toTrackKey(targetTrackPath);
+  return trackPaths.findIndex(
+    (trackPath) => toTrackKey(trackPath) === targetKey,
+  );
+}
+
+function hasTrackOverlap(sourceTracks, queueTracks) {
+  if (!Array.isArray(sourceTracks) || !Array.isArray(queueTracks)) {
+    return false;
+  }
+
+  if (!sourceTracks.length || !queueTracks.length) {
+    return false;
+  }
+
+  const sourceKeys = new Set(
+    sourceTracks.map((trackPath) => toTrackKey(trackPath)),
+  );
+  return queueTracks.some((trackPath) => sourceKeys.has(toTrackKey(trackPath)));
+}
+
 async function rebuildQueueAfterShuffleDisabled(guildId) {
   const queue = await music.getQueue(guildId);
   if (!Array.isArray(queue) || queue.length <= 1) {
@@ -332,9 +358,7 @@ async function rebuildQueueAfterShuffleDisabled(guildId) {
   const currentTrackPath = music.getCurrentTrackPath(guildId);
   const queueAfterCurrent = queue.slice();
   if (currentTrackPath) {
-    const currentIndex = queueAfterCurrent.findIndex(
-      (trackPath) => trackPath === currentTrackPath,
-    );
+    const currentIndex = findTrackIndex(queueAfterCurrent, currentTrackPath);
     if (currentIndex >= 0) {
       queueAfterCurrent.splice(currentIndex, 1);
     }
@@ -349,13 +373,14 @@ async function rebuildQueueAfterShuffleDisabled(guildId) {
     ? [currentTrackPath, ...queueAfterCurrent]
     : queue.slice();
   const loopSource = music.getLoopSource(guildId);
-  const source =
-    Array.isArray(loopSource) && loopSource.length
-      ? loopSource
-      : fallbackSource;
+  const canUseLoopSource =
+    Array.isArray(loopSource) &&
+    loopSource.length &&
+    hasTrackOverlap(loopSource, queueAfterCurrent);
+  const source = canUseLoopSource ? loopSource : fallbackSource;
 
   const currentIndexInSource = currentTrackPath
-    ? source.findIndex((trackPath) => trackPath === currentTrackPath)
+    ? findTrackIndex(source, currentTrackPath)
     : -1;
   const rotatedSource =
     currentIndexInSource >= 0
