@@ -255,6 +255,54 @@ module.exports = {
     let endpointDiagnosticsPromise = null;
     let voiceChannelForJoin = null;
     let manualConfigureKickCount = 0;
+    let forceVoiceEndpoint443 = false;
+
+    const replaceEndpointPort = (endpoint, forcedPort) => {
+      const parsed = parseVoiceEndpoint(endpoint);
+      if (!parsed?.host) return endpoint;
+      return `${parsed.host}:${forcedPort}`;
+    };
+
+    const getCurrentAdapterCreator = () => {
+      const baseCreator = interaction.guild.voiceAdapterCreator;
+      if (!forceVoiceEndpoint443) return baseCreator;
+
+      return (methods) => {
+        const wrappedMethods = {
+          ...methods,
+          onVoiceServerUpdate: (data) => {
+            try {
+              const originalEndpoint = data?.endpoint || null;
+              const rewritten = originalEndpoint
+                ? replaceEndpointPort(originalEndpoint, 443)
+                : originalEndpoint;
+
+              if (
+                originalEndpoint &&
+                rewritten &&
+                originalEndpoint !== rewritten
+              ) {
+                pushWarn(
+                  `LAB fallback: rewriting VOICE_SERVER_UPDATE endpoint from ${originalEndpoint} to ${rewritten}.`,
+                );
+              }
+
+              methods.onVoiceServerUpdate({
+                ...data,
+                endpoint: rewritten,
+              });
+            } catch (err) {
+              pushError(
+                `Adapter endpoint rewrite failed: ${err?.message || err}. Forwarding original payload.`,
+              );
+              methods.onVoiceServerUpdate(data);
+            }
+          },
+        };
+
+        return baseCreator(wrappedMethods);
+      };
+    };
 
     const tryManualConfigureNetworking = (reasonLabel) => {
       if (!connection) return false;
@@ -298,7 +346,7 @@ module.exports = {
       connection = joinVoiceChannel({
         channelId: voiceChannelForJoin.id,
         guildId: interaction.guild.id,
-        adapterCreator: interaction.guild.voiceAdapterCreator,
+        adapterCreator: getCurrentAdapterCreator(),
         selfDeaf: true,
       });
 
@@ -319,7 +367,7 @@ module.exports = {
       });
 
       pushLine(
-        `Voice connection (${reasonLabel}) created. current=${connection.state?.status}`,
+        `Voice connection (${reasonLabel}) created. current=${connection.state?.status}, forceVoiceEndpoint443=${forceVoiceEndpoint443}`,
       );
     };
 
@@ -352,6 +400,22 @@ module.exports = {
                 status === VoiceConnectionStatus.Signalling ||
                 netCode === 6
               ) {
+                const parsedEndpoint = parseVoiceEndpoint(lastVoiceEndpoint);
+                if (
+                  !forceVoiceEndpoint443 &&
+                  parsedEndpoint?.port &&
+                  parsedEndpoint.port !== 443
+                ) {
+                  forceVoiceEndpoint443 = true;
+                  pushWarn(
+                    `Retry strategy: enabling LAB endpoint port fallback to 443 (last endpoint port=${parsedEndpoint.port}).`,
+                  );
+                  createFreshConnection(
+                    `force-endpoint-443-attempt-${attempt + 1}`,
+                  );
+                  continue;
+                }
+
                 // Lab-only hotfix path: try configureNetworking once before hard recreate.
                 if (
                   gotVoiceStateUpdate &&
