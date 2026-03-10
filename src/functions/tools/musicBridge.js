@@ -19,6 +19,7 @@ const ACTIONS = new Set([
   "next",
   "previous",
   "start_playback",
+  "disconnect",
   "set_shuffle",
   "set_loop",
   "enqueue_priority",
@@ -583,6 +584,11 @@ async function applyCommand(client, commandRow) {
     }
 
     return "Playback start failed";
+  }
+
+  if (action === "disconnect") {
+    music.stopAndCleanup(guildId);
+    return "Playback stopped and bot disconnected";
   }
 
   if (action === "set_shuffle") {
