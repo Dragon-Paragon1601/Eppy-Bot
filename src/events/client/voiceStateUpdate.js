@@ -1,5 +1,9 @@
 const pool = require("../../events/mysql/connect");
 const logger = require("../../logger");
+const music = require("../../functions/handlers/handleMusic");
+
+const EMPTY_CHANNEL_TIMEOUT_MS = 15 * 60 * 1000;
+const emptyChannelTimers = new Map();
 
 let tableReady = false;
 let tablePromise = null;
@@ -25,6 +29,76 @@ async function ensureVoiceTable() {
   await tablePromise;
 }
 
+function clearEmptyChannelTimer(guildId) {
+  const activeTimer = emptyChannelTimers.get(guildId);
+  if (activeTimer) {
+    clearTimeout(activeTimer);
+    emptyChannelTimers.delete(guildId);
+  }
+}
+
+function countHumanMembers(channel) {
+  if (!channel?.members) return 0;
+  return channel.members.filter((member) => !member.user?.bot).size;
+}
+
+function isBotInChannel(guild) {
+  const botChannelId = guild?.members?.me?.voice?.channelId;
+  return typeof botChannelId === "string" && botChannelId.length > 0;
+}
+
+function evaluateEmptyChannelProtection(guild) {
+  if (!guild) return;
+
+  if (!isBotInChannel(guild)) {
+    clearEmptyChannelTimer(guild.id);
+    return;
+  }
+
+  const botVoiceChannel = guild.members.me.voice.channel;
+  if (!botVoiceChannel) {
+    clearEmptyChannelTimer(guild.id);
+    return;
+  }
+
+  const humanCount = countHumanMembers(botVoiceChannel);
+  if (humanCount > 0) {
+    clearEmptyChannelTimer(guild.id);
+    return;
+  }
+
+  if (emptyChannelTimers.has(guild.id)) {
+    return;
+  }
+
+  const timer = setTimeout(() => {
+    try {
+      const refreshedGuild = guild.client.guilds.cache.get(guild.id);
+      const refreshedBotChannel = refreshedGuild?.members?.me?.voice?.channel;
+      const refreshedHumanCount = countHumanMembers(refreshedBotChannel);
+
+      if (!refreshedBotChannel || refreshedHumanCount > 0) {
+        clearEmptyChannelTimer(guild.id);
+        return;
+      }
+
+      music.stopAndCleanup(guild.id);
+      logger.info(
+        `Auto-disconnect for guild ${guild.id}: bot stayed alone in voice channel for 15 minutes.`,
+      );
+    } catch (error) {
+      logger.error(`voiceStateUpdate auto-disconnect error: ${error}`);
+    } finally {
+      clearEmptyChannelTimer(guild.id);
+    }
+  }, EMPTY_CHANNEL_TIMEOUT_MS);
+
+  emptyChannelTimers.set(guild.id, timer);
+  logger.debug(
+    `Started 15-minute empty-channel timer for guild ${guild.id} (channel ${botVoiceChannel.id}).`,
+  );
+}
+
 module.exports = {
   name: "voiceStateUpdate",
   async execute(oldState, newState) {
@@ -37,6 +111,8 @@ module.exports = {
 
       const oldChannelId = oldState?.channelId || null;
       const newChannelId = newState?.channelId || null;
+
+      evaluateEmptyChannelProtection(newState?.guild || oldState?.guild);
 
       if (oldChannelId === newChannelId) {
         return;
