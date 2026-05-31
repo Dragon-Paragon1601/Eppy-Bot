@@ -66,7 +66,10 @@ function createMusicPlaybackTools({
         return;
       }
 
-      if (interaction.channel) {
+      if (
+        interaction?.channel &&
+        typeof interaction.channel.send === "function"
+      ) {
         interaction.channel.send(
           "⌛ Queue is empty. Waiting for another song!",
         );
@@ -110,7 +113,23 @@ function createMusicPlaybackTools({
       await queueEmpty(guildId, interaction);
       queue = await getQueue(guildId);
 
-      const voiceChannel = interaction.member.voice.channel;
+      let voiceChannel = interaction?.member?.voice?.channel;
+
+      // Fallback: if interaction is stale (async call), get channel from existing connection
+      if (!voiceChannel && connections[guildId]?.joinConfig?.channelId) {
+        const channelId = connections[guildId].joinConfig.channelId;
+        try {
+          const guild = interaction?.guild;
+          if (guild) {
+            voiceChannel = await guild.channels.fetch(channelId);
+          }
+        } catch (e) {
+          logger.warn(
+            `Could not fetch voice channel ${channelId}: ${e.message}`,
+          );
+        }
+      }
+
       if (!voiceChannel) {
         logger.debug(`🚫 User left voice channel. Bot disconnecting.`);
         connections[guildId]?.destroy();
@@ -423,14 +442,14 @@ function createMusicPlaybackTools({
           }
           delete currentlyPlayingSource[guildId];
           currentTrackMap.delete(guildId);
-          if (!_startingSet.has(guildId)) {
-            try {
-              await playNext(guildId, interaction);
-            } catch (err) {
-              logger.error(
-                `Error in fallback Idle listener playNext call: ${err}`,
-              );
-            }
+          nextTrackInfo.delete(guildId);
+          _startingSet.delete(guildId);
+          try {
+            await playNext(guildId, interaction);
+          } catch (err) {
+            logger.error(
+              `Error in fallback Idle listener playNext call: ${err}`,
+            );
           }
         });
       }
