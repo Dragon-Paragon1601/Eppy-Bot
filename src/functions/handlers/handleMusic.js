@@ -24,6 +24,7 @@ const {
   getGuildNotificationSettings,
   isNotificationTypeEnabled,
 } = require("../tools/notificationSettings");
+const premadePlaylistsHandler = require("../tools/premadePlaylistsHandler");
 const {
   firstSongStartedMap,
   connections,
@@ -396,4 +397,19 @@ module.exports = {
   getSongName,
   getCurrentTrackPath,
   getCurrentSource,
+  // Premade playlists
+  listPremadePlaylists: premadePlaylistsHandler.listPremadePlaylists,
+  getPremadePlaylist: premadePlaylistsHandler.getPremadePlaylist,
+  getPremadePlaylistByName: premadePlaylistsHandler.getPremadePlaylistByName,
+  getPremadePlaylistTracks: premadePlaylistsHandler.getPremadePlaylistTracks,
+  getPremadePlaylistTrackPaths:
+    premadePlaylistsHandler.getPremadePlaylistTrackPaths,
+  createPremadePlaylist: premadePlaylistsHandler.createPremadePlaylist,
+  deletePremadePlaylist: premadePlaylistsHandler.deletePremadePlaylist,
+  renamePremadePlaylist: premadePlaylistsHandler.renamePremadePlaylist,
+  addTrackToPremadePlaylist: premadePlaylistsHandler.addTrackToPremadePlaylist,
+  removeTrackFromPremadePlaylist:
+    premadePlaylistsHandler.removeTrackFromPremadePlaylist,
+  reorderPremadePlaylistTracks:
+    premadePlaylistsHandler.reorderPremadePlaylistTracks,
 };

@@ -994,6 +994,14 @@ async function ensureTables() {
   await pool.query(
     "CREATE TABLE IF NOT EXISTS guild_user_voice_states (guild_id VARCHAR(32) NOT NULL, user_id VARCHAR(32) NOT NULL, channel_id VARCHAR(32) NOT NULL, channel_name VARCHAR(255) NULL, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, PRIMARY KEY (guild_id, user_id), KEY idx_guild_voice_channel (guild_id, channel_id), KEY idx_guild_voice_updated (updated_at)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
   );
+
+  await pool.query(
+    "CREATE TABLE IF NOT EXISTS premade_playlists (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, name VARCHAR(255) NOT NULL UNIQUE, description VARCHAR(512) NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, KEY idx_premade_playlists_name (name)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+  );
+
+  await pool.query(
+    "CREATE TABLE IF NOT EXISTS premade_playlist_tracks (playlist_id BIGINT UNSIGNED NOT NULL, track_key VARCHAR(512) NOT NULL, position INT NOT NULL DEFAULT 0, PRIMARY KEY (playlist_id, track_key), FOREIGN KEY (playlist_id) REFERENCES premade_playlists(id) ON DELETE CASCADE, KEY idx_premade_position (playlist_id, position), KEY idx_premade_track_key (track_key)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+  );
 }
 
 async function resetPlaybackStateAfterRestart() {
